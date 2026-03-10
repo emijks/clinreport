@@ -409,13 +409,53 @@ class ClinReport:
         """
         Template for 10x Case
         """
+        sample_data = self.data[sample]
+        sample_variants_data = sample_data['variants_data']
+
+        case_table_data = [(sample_data[key] for key in ['Номер образца', 'Пол пациента', 'Предварительный диагноз'])]
+        tech_table_data = [(sample_data[key] for key in [
+            'Метод исследования',
+            'Средняя глубина прочтения генома после секвенирования',
+            'Количество прочитанных нуклеотидов',
+            'Тип прочтения',
+            'Длина прочтения',
+            'Качество выходных данных секвенирования'
+        ])]
+        CNV_table_data = []
+        MT_table_data = []
+        main_table_data = []
+
+        tech_table_data_10x = [(sample_data[key] for key in [
+            'Метод исследования',
+            #'Тип библиотеки',
+            'Средняя глубина прочтения генома после секвенирования',
+            'Тип прочтения',
+            'Длина прочтения',
+            'Качество выходных данных секвенирования',
+            #'Возможные технические/биологические ограничения метода',
+        ])]
+
+
         doc = Document()
         
         doc.add_heading('ТЕХНИЧЕСКОЕ ЗАКЛЮЧЕНИЕ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
         doc.add_paragraph('по результатам биоинформатического анализа').alignment = WD_ALIGN_PARAGRAPH.CENTER
         doc.add_paragraph('данных полногеномного секвенирования ДНК').alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        # self.add_table(doc, case_table_data, self.case_10x_table_header, transpose=True)
+        self.add_table(doc, case_table_data, self.case_table_header_10x, transpose=True)
+
+        doc.add_heading('РЕЗУЛЬТАТЫ ИССЛЕДОВАНИЯ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        self.add_table(doc, main_table_data, self.main_table_header_10x)
+        doc.add_paragraph("Структурные генетические варианты").alignment = WD_ALIGN_PARAGRAPH.CENTER
+        self.add_table(doc, CNV_table_data, self.CNV_table_header)
+
+        doc.add_paragraph("Варианты в митохондриальной ДНК").alignment = WD_ALIGN_PARAGRAPH.CENTER
+        self.add_table(doc, MT_table_data, self.MT_table_header)
+
+        doc.add_paragraph("СВЕДЕНИЯ О КАЧЕСТВЕ ИССЛЕДОВАНИЯ").alignment = WD_ALIGN_PARAGRAPH.CENTER
+        self.add_table(doc, tech_table_data_10x, self.tech_table_header_10x, transpose=True)
+
+        doc.sections[0].footer.paragraphs[0].text = f"{sample}\tСтраница 1"
 
         return doc
  
@@ -575,10 +615,44 @@ class ClinReport:
 
 
     # Case 10x
-    case_10x_table_header = (
+    case_table_header_10x = (
         'Лабораторный номер',
         'Пол',
         'Направительный диагноз ребенка',
+    )
+
+    main_table_header_10x = (
+        'Ген',
+        'HGVSg',
+        'Генотип',
+        'Качество определения альтернативного аллеля (QUAL)',
+        'Количество молекул в позиции (альтернатиный/общий)',
+        'Интерпретация',
+    )
+
+    SNV_table_header_10x = (
+        'Ген',
+        'Ассоциированное заболевание (OMIM)',
+        'Затронутые гены',
+        'Число копий',
+        'Классификация'
+    )
+
+    MT_table_header_10x = (
+        'Ген',
+        'Ассоциированное заболевание (OMIM)',
+        'Изменение ДНК',
+        'Классификация',
+    )
+
+    tech_table_header_10x = (
+        'Метод исследования',
+        #'Тип библиотеки',
+        'Средняя глубина прочтения генома после секвенирования',
+        'Тип прочтения',
+        'Длина прочтения',
+        'Качество выходных данных секвенирования',
+        #'Возможные технические/биологические ограничения метода',       
     )
 
     # Default Case
