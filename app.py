@@ -184,6 +184,20 @@ class ConfirmationWindow(tk.Toplevel):
         self.style = ttk.Style(self)
         self.style.configure('Treeview', rowheight=40)
 
+        # Выбор типа отчета
+        self.doc_type_var = tk.StringVar(value="Стандартный отчет")
+        self.doc_type_label = tk.Label(self, text="Тип отчета:")
+        self.doc_type_label.pack(pady=(10, 0))
+        self.doc_type_combo = ttk.Combobox(
+            self,
+            textvariable=self.doc_type_var,
+            values=["Стандартный отчет", "10x отчет"],
+            state="readonly",
+            width=30
+        )
+        self.doc_type_combo.current(0)
+        self.doc_type_combo.pack(pady=(0, 10))
+
         self.save_button = tk.Button(self, text="Сохранить как ...", command=self.save_docx)
         self.save_button.pack(pady=5)
 
@@ -387,7 +401,15 @@ class ConfirmationWindow(tk.Toplevel):
         """Сохраняет документ и при необходимости выгружает в БД."""
 
         self.save_tableviews_changes()
-        self.doc = self.clinreport.create_doc(self.sample)
+
+        # Выбор шаблона документа в зависимости от настроек пользователя
+        selected_type = getattr(self, "doc_type_var", None)
+        if selected_type and selected_type.get() == "10x отчет":
+            self.doc = self.clinreport.create_doc_10x(self.sample)
+        else:
+            # По умолчанию используется стандартный отчет
+            self.doc = self.clinreport.create_doc(self.sample)
+
         filepath = filedialog.asksaveasfilename(
             title='Сохранить как ...',
             defaultextension=".docx",

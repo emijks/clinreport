@@ -8,6 +8,7 @@ from math import log, floor
 import argparse
 import sqlite3
 import pandas as pd
+import json
 
 
 class ClinReport:
@@ -404,6 +405,21 @@ class ClinReport:
         return doc
 
 
+    def create_doc_10x(self, sample: str, dzm: bool=True) -> Document:
+        """
+        Template for 10x Case
+        """
+        doc = Document()
+        
+        doc.add_heading('ТЕХНИЧЕСКОЕ ЗАКЛЮЧЕНИЕ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph('по результатам биоинформатического анализа').alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph('данных полногеномного секвенирования ДНК').alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # self.add_table(doc, case_table_data, self.case_10x_table_header, transpose=True)
+
+        return doc
+ 
+    
     def filter_variants(self, variants_data: list, by_note: str | None = None, by_sample: str | None = None) -> list:
         variants_data = variants_data.copy()
         if by_note:
@@ -557,6 +573,15 @@ class ClinReport:
             gnomad4aggregated['AF'] = gnomad4aggregated['AC'] / gnomad4aggregated['AN']
         return gnomad4aggregated
 
+
+    # Case 10x
+    case_10x_table_header = (
+        'Лабораторный номер',
+        'Пол',
+        'Направительный диагноз ребенка',
+    )
+
+    # Default Case
 
     note2clinsig = {
         '1': 'патогенный',
