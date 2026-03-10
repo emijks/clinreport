@@ -13,12 +13,13 @@ import json
 
 class ClinReport:
 
-    def __init__(self, cravat_sqlite: str, target_sample: str | None = None, clinician: str | None = None, ru_annotations: dict | None = None):
+    def __init__(self, cravat_sqlite: str, target_sample: str | None = None, clinician: str | None = None, ru_annotations: dict | None = None, report_type: str = "default"):
         self.cravat_sqlite = cravat_sqlite
         self.all_samples = self.get_all_samples()
         self.target_sample = target_sample or self.all_samples[0]
         self.clinician = clinician
         self.ru_annotations = ru_annotations
+        self.report_type = report_type
         self.data = None
 
 
@@ -36,7 +37,10 @@ class ClinReport:
         reports = {}
         self.get_data()
         for sample in self.all_samples:
-            doc = self.create_doc(sample)
+            if self.report_type == "10x":
+                doc = self.create_doc_10x(sample)  
+            else:
+                doc = self.create_doc(sample)
             reports[sample] = doc
         return reports
 
@@ -446,6 +450,7 @@ class ClinReport:
 
         doc.add_heading('РЕЗУЛЬТАТЫ ИССЛЕДОВАНИЯ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
         self.add_table(doc, main_table_data, self.main_table_header_10x)
+
         doc.add_paragraph("Структурные генетические варианты").alignment = WD_ALIGN_PARAGRAPH.CENTER
         self.add_table(doc, CNV_table_data, self.CNV_table_header)
 
@@ -758,8 +763,9 @@ if __name__ == '__main__':
     argparser = argparse.ArgumentParser(description='Generate report(s) from GenLab OpenCRAVAT SQLite')
     argparser.add_argument('sqlite', type=str, help='Path to OpenCRAVAT SQLite')
     argparser.add_argument('-t', '--target-sample', type=str, help='Main sample in duo/trio')
+    argparser.add_argument('-r', '--report', choices=('default', '10x'), default='default', help='Select report template to use',)
     args = argparser.parse_args()
-    reports = ClinReport(args.sqlite, args.target_sample).generate_reports()
+    reports = ClinReport(args.sqlite, args.target_sample, report_type=args.report).generate_reports()
     for sample, doc in reports.items():
         output_fpath = input(f'Save {sample} document as ... ')
         doc.save(output_fpath)
