@@ -135,12 +135,12 @@ class ClinReport:
                 inher_msg = self.ru_annotations.get('secondary', {}).get('Inheritance', {}).get(symbol, inher_msg)
             else:
                 omim_pheno = self.ru_annotations.get('omim', {}).get('Ассоциированное заболевание', {}).get(symbol, omim_pheno)
-        if note == '8':
-            # "carrier" variants
+        if note in ['1', '2', '3']:
+            clinsig_msg = self.note2clinsig[note].capitalize()
+        else:
+            # non-causative variants
             clinvar_sig = variant_data["clinvar_new__sig"]
             clinsig_msg = self.clinsig2msg.get(clinvar_sig, '-')
-        else:
-            clinsig_msg = self.note2clinsig[note].capitalize()
         zygosity_inher_msg = f'{zygosity_msg}\n({inher_msg})'
         clin_type = self.note2type.get(note)
         variant_data.update({
