@@ -40,3 +40,16 @@ class Database:
                 con=conn
             )
         return bool(len(sample_data))
+
+    def get_similar_variants(self, variant_data):
+            """Запрос к БД для получения похожих вариантов"""
+            dna_change = variant_data['Изменение ДНК (HG38) (Изменение белка)'].split('\n')[0]
+            with self.conn() as conn:
+                query = f"""
+                    SELECT 
+                        "Номер образца", "Патогенность", "Клиницист", "Дата заключения"
+                    FROM "ReportedVariants" 
+                    WHERE "Изменение ДНК (HG38) (Изменение белка)" LIKE '%%{dna_change}%%'
+                    """
+                similar_variants = pd.read_sql(query, conn).to_dict('records')
+                return similar_variants

@@ -16,7 +16,7 @@ class ClinReport:
         self.cravat_sqlite = cravat_sqlite
         self.all_samples = self.get_all_samples()
         self.target_sample = target_sample or self.all_samples[0]
-        self.clinician = clinician or ''
+        self.clinician = clinician
         self.ru_annotations = ru_annotations
         self.data = None
 
@@ -45,12 +45,16 @@ class ClinReport:
         Parse, filter and process SQLite variants for all samples
         """
         variants_data = self.get_variants_data()
+        if not hasattr(self, 'clinician') or self.clinician is None:
+            self.clinician = 'Не указан'
         self.data = {
             sample: {
                 'Номер образца': str(sample).split(".")[0],
                 'Пол пациента': '_',
                 'Возраст пациента': '_',
                 'Предварительный диагноз': '_',
+                'Клиницист': self.clinician,
+                'Дата заключения': date.today().isoformat(),
                 'Метод исследования': 'полногеномное секвенирование (Whole Genome Sequencing)',
                 'Средняя глубина прочтения генома после секвенирования': '_x',
                 'Количество прочитанных нуклеотидов': 'не менее 90 млрд',
@@ -146,6 +150,7 @@ class ClinReport:
             "Зиготность (Тип наследования)": zygosity_inher_msg,
             "Частота*": af_msg,
             "Кол-во прочтений (АЛТ/ОБЩ)": cover_msg,
+            "Ручные критерии": "",
             "Патогенность": clinsig_msg,
             "Тип": clin_type
         })
@@ -158,6 +163,8 @@ class ClinReport:
             "Пол пациента",
             "Возраст пациента",
             "Предварительный диагноз",
+            "Клиницист",
+            "Дата заключения"
         ]
         variant_data_columns = [
             "Ген",
@@ -166,13 +173,23 @@ class ClinReport:
             "Зиготность (Тип наследования)",
             "Частота*",
             "Кол-во прочтений (АЛТ/ОБЩ)",
+            "Ручные критерии",
             "Патогенность",
             "Тип"
         ]
-        sample_payload = [{col: sample_variant_data[col] for col in variant_data_columns} for sample_variant_data in sample_data['variants_data']]
-        for sample_variant_data in sample_payload:
-            sample_variant_data.update({col: sample_data[col] for col in common_columns})
+
+        sample_payload = []
+        
+
+        for variant in sample_data['variants_data']:
+            record = {
+            **{col: sample_data[col] for col in common_columns},
+            **{col: variant[col] for col in variant_data_columns}
+            }
+            sample_payload.append(record)
+    
         return pd.DataFrame(sample_payload)
+        
 
 
     def create_doc(self, sample: str, dzm: bool=True) -> Document:

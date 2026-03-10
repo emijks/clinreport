@@ -33,11 +33,30 @@ class MainWindow(tk.Tk):
 
         self.config_path = self.get_config_path('clinreport_config.json')
         self.config = load_config(self.config_path)
+        self.config = load_config(self.config_path)
+
+        if 'auto_upload' not in self.config:
+            self.config['auto_upload'] = True
 
         self.clinreport = None
         self.ru_annotations = self.setup_ru_annotations()
         self.setup_database()
 
+    def setup_styles(self):
+        """Настройка стилей для Treeview (темный текст на светлом фоне) с дефолтными настройками остального"""
+        style = ttk.Style(self)
+        
+        # Сбросить все стили к стандартным (тема 'default' или 'clam')
+        style.theme_use('clam')  # 'clam' — более современная тема с лучшей поддержкой цветов
+        
+        # Настройка Treeview: светлый фон + темный текст
+        style.configure("Treeview",
+            background="white",      # Светлый фон
+            foreground="black",     # Темный текст
+            fieldbackground="white", # Фон ячеек
+            rowheight=25,           # Высота строки
+            font=('Helvetica', 10)  # Шрифт
+        )
 
     def get_config_path(self, config_fname):
         """Путь к файлу настроек рядом с exe."""
@@ -111,7 +130,9 @@ class MainWindow(tk.Tk):
     def process_file(self, filepath, target_sample):
         """Обрабатывает файл в зависимости от выбранного типа."""
         try:
-            self.clinreport = ClinReport(filepath, clinician=self.config['clinician'], ru_annotations=self.ru_annotations)
+            clinician = self.config.get('clinician', 'Не указан') 
+            
+            self.clinreport = ClinReport(filepath, clinician=clinician, ru_annotations=self.ru_annotations)
             self.clinreport.target_sample = target_sample
             self.clinreport.get_data()
             for sample in self.clinreport.all_samples:
@@ -159,7 +180,7 @@ class ConfirmationWindow(tk.Toplevel):
         self.clinreport = self.master.clinreport
         self.sample = sample
         self.title(f"Образец {self.sample}")
-        self.geometry("750x800")
+        self.geometry("850x850")
         self.style = ttk.Style(self)
         self.style.configure('Treeview', rowheight=40)
 
@@ -220,21 +241,123 @@ class ConfirmationWindow(tk.Toplevel):
         self.common_tableview = self.pack_tableview(common_columns, common_values)
 
         self.variants_tableviews = {}
-        for note, columns in zip(['1', '2', '3', '7', '8'], [self.clinreport.SNV_table_header]*4+[self.clinreport.C_table_header]):
+        for note, columns in zip(['1', '2', '3', '7', '8'], [self.clinreport.SNV_table_header + ("Ручные критерии",)]*4+[self.clinreport.C_table_header + ("Ручные критерии",)]):
             note_variants_data = self.clinreport.filter_variants(sample_variants_data, by_note=note)
             variants_rows = [[row[col] for col in columns] for row in note_variants_data]
-            self.variants_tableviews[note] = self.pack_tableview(columns, variants_rows)
+            self.variants_tableviews[note] = self.pack_tableview_with_buttons(columns, variants_rows, note_variants_data)
 
-
-    def pack_tableview(self, columns: list | tuple, rows: list):
-        tableview = Tableview(self.scrollable_frame, columns=columns, show="headings")
+    def pack_tableview_with_buttons(self, columns: list | tuple, rows: list, variants_data: list):
+        # Создаем фрейм для таблицы и кнопок
+        frame = ttk.Frame(self.scrollable_frame)
+        frame.pack(pady=10, padx=10, fill="both", expand=True)
+        
+        # Создаем таблицу
+        tableview = Tableview(frame, columns=columns, show="headings")
         for col in columns:
             tableview.heading(col, text=col)
             tableview.column(col, width=100)
+        
+        # Заполняем таблицу данными
+        for i, row in enumerate(rows):
+            tableview.insert("", tk.END, values=row, tags=(i,))
+        
+        tableview.config(height=len(rows)+3 if len(rows) else 0)
+        tableview.pack(side="left", fill="both", expand=True)
+        
+        # Создаем фрейм для кнопок
+        button_frame = ttk.Frame(frame)
+        button_frame.pack(side="right", fill="y")
+        
+        # Добавляем кнопки для каждой строки
+        for i, variant_data in enumerate(variants_data):
+            btn = tk.Button(
+                button_frame,
+                text="Похожие",
+                command=lambda vd=variant_data: self.show_similar_variants(vd),
+                width=8
+            )
+            btn.pack(pady=2)
+        
+        return tableview
+
+    def show_similar_variants(self, variant_data):
+        """Показывает похожие варианты из базы данных"""
+        similar_window = tk.Toplevel(self)
+        similar_window.title(f"Похожие варианты для {variant_data['Ген']}")
+        similar_window.geometry("800x400")
+        
+        
+        try:
+            # Получаем похожие варианты из базы данных
+            similar_variants = self.master.database.get_similar_variants(variant_data)
+            
+            # Создаем таблицу для отображения
+            columns = ['Образец', 'Патогенность', 'Клиницист', 'Дата заключения']
+            tree = ttk.Treeview(similar_window, columns=columns, show="headings")
+            
+            for col in columns:
+                tree.heading(col, text=col)
+                tree.column(col, width=150)
+            
+            for variant in similar_variants:
+                tree.insert("", tk.END, values=(
+                    variant['Номер образца'],
+                    variant['Патогенность'],
+                    variant['Клиницист'],
+                    variant['Дата заключения']
+                ))
+            
+            tree.pack(fill="both", expand=True)
+            
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось получить данные: {str(e)}")
+
+    def pack_tableview(self, columns: list | tuple, rows: list, variants_data: list | None = None) -> ttk.Treeview:
+        """
+        Создает и размещает таблицу с данными и кнопками для поиска похожих вариантов
+        
+        Args:
+            columns: Заголовки столбцов
+            rows: Данные для строк таблицы
+            variants_data: Список словарей с полными данными вариантов (для поиска похожих)
+        
+        Returns:
+            Созданный виджет таблицы
+        """
+        # Создаем основной фрейм для таблицы и кнопок
+        container = ttk.Frame(self.scrollable_frame)
+        container.pack(fill='x', pady=5, padx=10)
+        
+        # Создаем таблицу
+        tableview = Tableview(container, columns=columns, show="headings")
+        
+        # Настраиваем заголовки и ширину столбцов
+        for col in columns:
+            tableview.heading(col, text=col)
+            tableview.column(col, width=100, anchor='w')
+        
+        # Заполняем таблицу данными
         for row in rows:
             tableview.insert("", tk.END, values=row)
-        tableview.config(height=len(rows)+3 if len(rows) else 0)
-        tableview.pack(pady=10, padx=10, fill="both", expand=True)
+        
+        tableview.pack(side='left', fill='x', expand=True)
+        
+        # Если переданы данные вариантов, добавляем кнопки
+        if variants_data:
+            # Фрейм для кнопок
+            button_frame = ttk.Frame(container)
+            button_frame.pack(side='right', fill='y')
+            
+            # Добавляем кнопку "Похожие" для каждой строки
+            for i, variant in enumerate(variants_data):
+                btn = tk.Button(
+                    button_frame,
+                    text="Похожие",
+                    command=lambda v=variant: self.show_similar_variants(v),
+                    width=8
+                )
+                btn.pack(pady=2, padx=2)
+        
         return tableview
 
 
@@ -261,6 +384,8 @@ class ConfirmationWindow(tk.Toplevel):
 
 
     def save_docx(self) -> None:
+        """Сохраняет документ и при необходимости выгружает в БД."""
+
         self.save_tableviews_changes()
         self.doc = self.clinreport.create_doc(self.sample)
         filepath = filedialog.asksaveasfilename(
@@ -272,6 +397,13 @@ class ConfirmationWindow(tk.Toplevel):
         if filepath:
             try:
                 self.doc.save(filepath)
+
+                if self.master.config.get('auto_upload', True):
+                    self.insert_to_db()
+                    messagebox.showinfo("Успешно", "Документ сохранен и данные выгружены в БД")
+                else:
+                    messagebox.showinfo("Успешно", "Документ сохранен")
+                    
             except Exception as e:
                 messagebox.showerror("Ошибка", f"Ошибка при сохранении документа: {repr(e)}")
 
@@ -303,16 +435,27 @@ class SettingsWindow(tk.Toplevel):
     def __init__(self, master):
         super().__init__(master)
         self.title("Настройки")
-        self.geometry("420x300")  # Установите желаемый размер
+        self.geometry("420x350")  # Установите желаемый размер
 
-        self.labels, self.entries = {}, {}
+        self.labels, self.entries, self.switches = {}, {}, {}
+        
         for row, (key, value) in enumerate(self.master.config.items()):
-            self.labels[key] = ttk.Label(self, text=f"{key}:")
-            self.labels[key].grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
-            self.entries[key] = ttk.Entry(self)
-            self.entries[key].insert(0, str(value))  # Преобразуем значение в строку
-            self.entries[key].grid(row=row, column=1, padx=5, pady=5, sticky=tk.EW)
+            if key == 'auto_upload':
+                self.auto_upload_var = tk.BooleanVar(value=self.master.config.get('auto_upload', True))
+                self.switches['auto_upload'] = ttk.Checkbutton(
+                    self,
+                    text="Автоматически выгружать в БД при сохранении",
+                    variable=self.auto_upload_var
+                )
+                self.switches['auto_upload'].grid(row=row, column=0, columnspan=2, padx=5, pady=10, sticky=tk.W)
+            else:
+                self.labels[key] = ttk.Label(self, text=f"{key}:")
+                self.labels[key].grid(row=row, column=0, padx=5, pady=5, sticky=tk.W)
+                self.entries[key] = ttk.Entry(self)
+                self.entries[key].insert(0, str(value))  # Преобразуем значение в строку
+                self.entries[key].grid(row=row, column=1, padx=5, pady=5, sticky=tk.EW)
 
+        
         self.save_button = tk.Button(self, text="Сохранить", command=self.save_settings)
         self.save_button.grid(row=len(self.entries)+1, column=0, columnspan=2, padx=5, pady=10)
 
@@ -321,6 +464,9 @@ class SettingsWindow(tk.Toplevel):
         """Сохраняет настройки в json."""
         for key, entry in self.entries.items():
             self.master.config[key] = entry.get()
+
+        self.master.config['auto_upload'] = self.auto_upload_var.get()
+
         try:
             with open(self.master.config_path, 'w') as f:
                 json.dump(self.master.config, f)
@@ -328,17 +474,70 @@ class SettingsWindow(tk.Toplevel):
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при сохранении настроек: {repr(e)}")
 
+class SimilarVariantsWindow(tk.Toplevel):
+    """Окно для отображения похожих вариантов из базы данных"""
+    
+    def __init__(self, master, variant_data):
+        super().__init__(master)
+        self.title(f"Похожие варианты для {variant_data['Ген']}")
+        self.geometry("800x600")
+        
+        
+        # Получаем данные о похожих вариантах из БД
+        similar_variants = self.get_similar_variants(variant_data)
+        
+        # Создаем таблицу для отображения
+        self.tree = ttk.Treeview(self, columns=('Образец', 'Патогенность', 'Клиницист', 'Дата заключения'), show='headings')
+        self.tree.heading('Образец', text='Образец')
+        self.tree.heading('Патогенность', text='Патогенность')
+        self.tree.heading('Клиницист', text='Клиницист')
+        self.tree.heading('Дата заключения', text='Дата заключения')
+        
+        # Заполняем таблицу данными
+        for variant in similar_variants:
+            self.tree.insert('', 'end', values=(
+                variant['Номер образца'],
+                variant['Патогенность'],
+                variant['Клиницист'],
+                variant['Дата заключения']
+            ))
+        
+        self.tree.pack(fill='both', expand=True)
+    
+    
+
 
 class Tableview(ttk.Treeview):
-    """Editable Treeview"""
-
+    """Editable Treeview with forced dark text on light background"""
+    
     def __init__(self, master=None, **kwargs):
         super().__init__(master, **kwargs)
+        self._setup_table_style()
         self._text_editor = None
         self._scrollbar = None
         self.bind("<Double-1>", self._on_double_click)
+        
 
+    def _setup_table_style(self):
+        style = ttk.Style(self)
 
+        style.configure("Treeview",
+            background="white",
+            foreground="black",
+            fieldbackground="white",
+            borderwidth=1,
+            relief="solid",
+            font=('Helvetica', 10),
+            selectbackground="white",  
+            selectforeground="black"
+            )
+
+        style.map('Treeview', 
+            background=[('selected', 'white')],  
+            foreground=[('selected', 'black')]   
+            )
+        
+    
     def _on_double_click(self, event):
         region = self.identify("region", event.x, event.y)
         if region != "cell":
@@ -363,11 +562,24 @@ class Tableview(ttk.Treeview):
         if self._scrollbar:
             self._scrollbar.destroy()
 
-        self._text_editor = tk.Text(self, wrap="word", height=4)
+        self._text_editor = tk.Text(
+            self,
+            wrap="word",
+            height=4,
+            bg="white",
+            fg="black",
+            insertbackground="black",
+            selectbackground="gray",
+            selectforeground="white"
+        )
         self._text_editor.insert("1.0", cell_value)
         self._text_editor.focus_set()
 
-        self._scrollbar = ttk.Scrollbar(self, orient="vertical", command=self._text_editor.yview)
+        self._scrollbar = ttk.Scrollbar(
+            self,
+            orient="vertical",
+            command=self._text_editor.yview
+        )
         self._text_editor.configure(yscrollcommand=self._scrollbar.set)
 
         self._text_editor.place(x=x, y=y, width=width-15, height=height*4)
@@ -378,7 +590,28 @@ class Tableview(ttk.Treeview):
         self._text_editor.bind("<Shift-Return>", lambda e: self._save_edit(row_id, col_num, event=e))
         self._text_editor.bind("<Escape>", lambda e: self._cancel_edit())
 
+        if self._similar_vars_button:
+            self._similar_vars_button.destroy()
+            
+        self._similar_vars_button = tk.Button(
+            self,
+            text="Похожие варианты",
+            command=lambda: self._show_similar_variants(row_id, col_num),
+            bg="white",
+            fg="black"
+        )
+        self._similar_vars_button.place(x=x+width, y=y, width=100, height=height*4)
+    
+    def _show_similar_variants(self, row_id, col_num):
+        # Получаем данные текущего варианта
+        values = self.item(row_id, 'values')
+        columns = self['columns']
+        variant_data = dict(zip(columns, values))
+        
+        # Открываем окно с похожими вариантами
+        SimilarVariantsWindow(self.master, variant_data)
 
+        
     def _save_edit(self, row_id, col_num, event=None):
         if event:
             event.widget.master.focus_set()  # Чтобы убрать фокус с Text (закрыть клавиатурный ввод)
