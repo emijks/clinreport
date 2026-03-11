@@ -198,14 +198,18 @@ class ConfirmationWindow(tk.Toplevel):
         self.doc_type_combo.current(0)
         self.doc_type_combo.pack(pady=(0, 10))
 
-        self.save_button = tk.Button(self, text="Сохранить как ...", command=self.save_docx)
-        self.save_button.pack(pady=5)
+        # Action buttons row (horizontal)
+        self.actions_frame = ttk.Frame(self)
+        self.actions_frame.pack(pady=8)
 
-        self.upload_button = tk.Button(self, text="Выгрузить в базу", command=self.insert_to_db)
-        self.upload_button.pack(pady=5)
+        self.save_button = tk.Button(self.actions_frame, text="Сохранить как ...", command=self.save_docx)
+        self.save_button.pack(side="left", padx=6)
 
-        self.close_button = tk.Button(self, text="Закрыть", command=self.close)
-        self.close_button.pack(pady=5)
+        self.upload_button = tk.Button(self.actions_frame, text="Выгрузить в базу", command=self.insert_to_db)
+        self.upload_button.pack(side="left", padx=6)
+
+        self.close_button = tk.Button(self.actions_frame, text="Закрыть", command=self.close)
+        self.close_button.pack(side="left", padx=6)
 
         self.container = ttk.Frame(self)
         self.container.pack(fill='both', expand=True)
@@ -402,12 +406,10 @@ class ConfirmationWindow(tk.Toplevel):
 
         self.save_tableviews_changes()
 
-        # Выбор шаблона документа в зависимости от настроек пользователя
         selected_type = getattr(self, "doc_type_var", None)
         if selected_type and selected_type.get() == "10x отчет":
             self.doc = self.clinreport.create_doc_10x(self.sample)
         else:
-            # По умолчанию используется стандартный отчет
             self.doc = self.clinreport.create_doc(self.sample)
 
         filepath = filedialog.asksaveasfilename(
