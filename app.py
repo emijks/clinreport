@@ -22,7 +22,7 @@ class MainWindow(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.title("ClinReport")
+        self.title("ClinReport v2.1")
         self.geometry("400x200")  # Установите желаемый размер
 
         self.select_file_button = tk.Button(self, text="Выбрать файл", command=self.select_file)
@@ -133,10 +133,14 @@ class MainWindow(tk.Tk):
             clinician = self.config.get('clinician', 'Не указан') 
             
             self.clinreport = ClinReport(filepath, clinician=clinician, ru_annotations=self.ru_annotations)
-            self.clinreport.target_sample = target_sample
             self.clinreport.get_data()
-            for sample in self.clinreport.all_samples:
-                ConfirmationWindow(self, sample)  # Открываем окно подтверждения
+            if target_sample == "__ALL__":
+                for sample in self.clinreport.all_samples:
+                    ConfirmationWindow(self, sample)
+            else:
+                self.clinreport.target_sample = target_sample
+                # Open confirmation only for selected (target) sample.
+                ConfirmationWindow(self, target_sample)
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при обработке файла: {traceback.format_exc()}")
 
@@ -149,7 +153,7 @@ class ProcessingWindow(tk.Toplevel):
         self.filepath = filepath
         self.process_file_callback = process_file_callback  # Функция, которую нужно вызвать после выбора типа
         self.title(f"{Path(filepath).name}")
-        self.geometry("300x150")  # Установите желаемый размер
+        self.geometry("300x200")  # Button isn't visible if 300x150
 
         self.text = tk.Label(self, text="Целевой образец:")
         self.text.pack(pady=10)
@@ -163,11 +167,19 @@ class ProcessingWindow(tk.Toplevel):
         self.confirm_button = tk.Button(self, text="Обработать", command=self.confirm_selection)
         self.confirm_button.pack(pady=10)
 
+        self.open_all_button = tk.Button(self, text="Открыть ВСЕ", command=self.confirm_all)
+        self.open_all_button.pack(pady=(0, 10))
+
 
     def confirm_selection(self):
         """Подтверждает выбор типа обработки и вызывает callback."""
         selected_type = self.target_sample.get()
         self.process_file_callback(self.filepath, selected_type)  # Передаем имя файла и выбранный тип
+        self.destroy()
+
+    def confirm_all(self):
+        """Открывает окна подтверждения для всех образцов."""
+        self.process_file_callback(self.filepath, "__ALL__")
         self.destroy()
 
 
@@ -412,24 +424,37 @@ class ConfirmationWindow(tk.Toplevel):
         else:
             self.doc = self.clinreport.create_doc(self.sample)
 
+        # Ensure save dialog appears in front of this window.
+        self.lift()
+        try:
+            self.attributes("-topmost", True)
+            self.update_idletasks()
+        except Exception:
+            pass
+
         filepath = filedialog.asksaveasfilename(
+            parent=self,
             title='Сохранить как ...',
             defaultextension=".docx",
             filetypes=[("DOCX files", "*.docx")],
             initialfile=f'Заключение ({str(self.sample).split(".")[0]}).docx'
         )
+        try:
+            self.attributes("-topmost", False)
+        except Exception:
+            pass
         if filepath:
             try:
                 self.doc.save(filepath)
 
                 if self.master.config.get('auto_upload', True):
                     self.insert_to_db()
-                    messagebox.showinfo("Успешно", "Документ сохранен и данные выгружены в БД")
+                    messagebox.showinfo("Успешно", "Документ сохранен и данные выгружены в БД", parent=self)
                 else:
-                    messagebox.showinfo("Успешно", "Документ сохранен")
+                    messagebox.showinfo("Успешно", "Документ сохранен", parent=self)
                     
             except Exception as e:
-                messagebox.showerror("Ошибка", f"Ошибка при сохранении документа: {repr(e)}")
+                messagebox.showerror("Ошибка", f"Ошибка при сохранении документа: {repr(e)}", parent=self)
 
 
     def insert_to_db(self) -> None:
