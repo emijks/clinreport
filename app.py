@@ -124,23 +124,31 @@ class MainWindow(tk.Tk):
 
     def open_processing_window(self, filepath):
         """Открывает окно выбора типа обработки."""
-        ProcessingWindow(self, filepath, self.process_file)
+        ProcessingWindow(self, filepath, self.process_file, self.process_file_lpwgs)
 
 
     def process_file(self, filepath, target_sample):
         """Обрабатывает файл в зависимости от выбранного типа."""
         try:
-            clinician = self.config.get('clinician', 'Не указан') 
-            
+            clinician = self.config.get('clinician', 'Не указан')
             self.clinreport = ClinReport(filepath, clinician=clinician, ru_annotations=self.ru_annotations)
             self.clinreport.get_data()
-            if target_sample == "__ALL__":
-                for sample in self.clinreport.all_samples:
-                    ConfirmationWindow(self, sample)
-            else:
-                self.clinreport.target_sample = target_sample
-                # Open confirmation only for selected (target) sample.
-                ConfirmationWindow(self, target_sample)
+            self.clinreport.target_sample = target_sample
+            ConfirmationWindow(self, target_sample)
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Ошибка при обработке файла: {traceback.format_exc()}")
+
+    def process_file_lpwgs(self, filepath, target_sample):
+        """Обрабатывает файл в режиме LPWGS: целевой — стандартный отчёт, нецелевые — технический документ 10x."""
+        try:
+            clinician = self.config.get('clinician', 'Не указан')
+            self.clinreport = ClinReport(filepath, clinician=clinician, ru_annotations=self.ru_annotations)
+            self.clinreport.get_data()
+            self.clinreport.target_sample = target_sample
+            ConfirmationWindow(self, target_sample, lpwgs_target=True)
+            for sample in self.clinreport.all_samples:
+                if sample != target_sample:
+                    ConfirmationWindowLPWGS(self, sample)
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при обработке файла: {traceback.format_exc()}")
 
@@ -148,12 +156,13 @@ class MainWindow(tk.Tk):
 class ProcessingWindow(tk.Toplevel):
     """Окно выбора обработки."""
 
-    def __init__(self, master, filepath, process_file_callback):
+    def __init__(self, master, filepath, process_file_callback, process_file_lpwgs_callback):
         super().__init__(master)
         self.filepath = filepath
-        self.process_file_callback = process_file_callback  # Функция, которую нужно вызвать после выбора типа
+        self.process_file_callback = process_file_callback
+        self.process_file_lpwgs_callback = process_file_lpwgs_callback
         self.title(f"{Path(filepath).name}")
-        self.geometry("300x200")  # Button isn't visible if 300x150
+        self.geometry("300x200")
 
         self.text = tk.Label(self, text="Целевой образец:")
         self.text.pack(pady=10)
@@ -165,10 +174,10 @@ class ProcessingWindow(tk.Toplevel):
         self.target_sample.pack(pady=10)
 
         self.confirm_button = tk.Button(self, text="Обработать", command=self.confirm_selection)
-        self.confirm_button.pack(pady=10)
+        self.confirm_button.pack(pady=5)
 
-        self.open_all_button = tk.Button(self, text="Открыть ВСЕ", command=self.confirm_all)
-        self.open_all_button.pack(pady=(0, 10))
+        self.confirm_lpwgs_button = tk.Button(self, text="Обработать как LPWGS", command=self.confirm_selection_lpwgs)
+        self.confirm_lpwgs_button.pack(pady=(0, 10))
 
 
     def confirm_selection(self):
@@ -177,38 +186,40 @@ class ProcessingWindow(tk.Toplevel):
         self.process_file_callback(self.filepath, selected_type)  # Передаем имя файла и выбранный тип
         self.destroy()
 
-    def confirm_all(self):
-        """Открывает окна подтверждения для всех образцов."""
-        self.process_file_callback(self.filepath, "__ALL__")
+    def confirm_selection_lpwgs(self):
+        """Подтверждает выбор и вызывает LPWGS callback."""
+        selected_type = self.target_sample.get()
+        self.process_file_lpwgs_callback(self.filepath, selected_type)
         self.destroy()
 
 
 class ConfirmationWindow(tk.Toplevel):
     """Окно подтверждения данных."""
 
-    def __init__(self, master, sample: str):
+    def __init__(self, master, sample: str, lpwgs_target: bool = False):
         super().__init__(master)
         self.database = self.master.database
         self.clinreport = self.master.clinreport
         self.sample = sample
+        self.lpwgs_target = lpwgs_target
         self.title(f"Образец {self.sample}")
         self.geometry("850x850")
         self.style = ttk.Style(self)
         self.style.configure('Treeview', rowheight=40)
 
-        # Выбор типа отчета
-        self.doc_type_var = tk.StringVar(value="Стандартный отчет")
-        self.doc_type_label = tk.Label(self, text="Тип отчета:")
-        self.doc_type_label.pack(pady=(10, 0))
-        self.doc_type_combo = ttk.Combobox(
-            self,
-            textvariable=self.doc_type_var,
-            values=["Стандартный отчет", "10x отчет"],
-            state="readonly",
-            width=30
-        )
-        self.doc_type_combo.current(0)
-        self.doc_type_combo.pack(pady=(0, 10))
+        if not lpwgs_target:
+            self.doc_type_var = tk.StringVar(value="Стандартный отчет")
+            self.doc_type_label = tk.Label(self, text="Тип отчета:")
+            self.doc_type_label.pack(pady=(10, 0))
+            self.doc_type_combo = ttk.Combobox(
+                self,
+                textvariable=self.doc_type_var,
+                values=["Стандартный отчет", "10x отчет"],
+                state="readonly",
+                width=30
+            )
+            self.doc_type_combo.current(0)
+            self.doc_type_combo.pack(pady=(0, 10))
 
         # Action buttons row (horizontal)
         self.actions_frame = ttk.Frame(self)
@@ -418,11 +429,14 @@ class ConfirmationWindow(tk.Toplevel):
 
         self.save_tableviews_changes()
 
-        selected_type = getattr(self, "doc_type_var", None)
-        if selected_type and selected_type.get() == "10x отчет":
-            self.doc = self.clinreport.create_doc_10x(self.sample)
-        else:
+        if self.lpwgs_target:
             self.doc = self.clinreport.create_doc(self.sample)
+        else:
+            selected_type = getattr(self, "doc_type_var", None)
+            if selected_type and selected_type.get() == "10x отчет":
+                self.doc = self.clinreport.create_doc_10x(self.sample)
+            else:
+                self.doc = self.clinreport.create_doc(self.sample)
 
         # Ensure save dialog appears in front of this window.
         self.lift()
@@ -473,6 +487,118 @@ class ConfirmationWindow(tk.Toplevel):
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при выгрузке данных: {repr(e)}")
 
+
+    def close(self) -> None:
+        self.destroy()
+
+
+class ConfirmationWindowLPWGS(tk.Toplevel):
+    """Окно подтверждения для нецелевого образца в режиме LPWGS (технический документ 10x, без выгрузки в БД)."""
+
+    def __init__(self, master, sample: str):
+        super().__init__(master)
+        self.clinreport = self.master.clinreport
+        self.sample = sample
+        self.title(f"Образец {self.sample} (LPWGS)")
+        self.geometry("850x650")
+        self.style = ttk.Style(self)
+        self.style.configure('Treeview', rowheight=40)
+
+        self.actions_frame = ttk.Frame(self)
+        self.actions_frame.pack(pady=8)
+
+        self.save_button = tk.Button(self.actions_frame, text="Сохранить как ...", command=self.save_docx_lpwgs)
+        self.save_button.pack(side="left", padx=6)
+
+        self.close_button = tk.Button(self.actions_frame, text="Закрыть", command=self.close)
+        self.close_button.pack(side="left", padx=6)
+
+        self.container = ttk.Frame(self)
+        self.container.pack(fill='both', expand=True)
+
+        self.canvas = tk.Canvas(self.container)
+        self.canvas.pack(side='left', fill='both', expand=True)
+
+        self.scrollbar = ttk.Scrollbar(self.container, orient='vertical', command=self.canvas.yview)
+        self.scrollbar.pack(side='right', fill='y')
+
+        self.scrollable_frame = ttk.Frame(self.canvas)
+        self.scrollable_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor='nw')
+
+        self.pack_tableviews_lpwgs()
+
+        self.bind_mousewheel_recursively(self.scrollable_frame)
+
+    def bind_mousewheel_recursively(self, widget):
+        widget.bind("<MouseWheel>", self._on_mousewheel)
+        for child in widget.winfo_children():
+            self.bind_mousewheel_recursively(child)
+
+    def _on_mousewheel(self, event):
+        if event.delta:
+            self.canvas.yview_scroll(int(-1 * (event.delta)), "units")
+
+    def pack_tableviews_lpwgs(self) -> None:
+        common_columns = [
+            'Номер образца',
+            'Пол пациента',
+            'Возраст пациента',
+            'Предварительный диагноз',
+            'Средняя глубина прочтения генома после секвенирования'
+        ]
+        common_values = [[self.clinreport.data[self.sample][col] for col in common_columns]]
+        container = ttk.Frame(self.scrollable_frame)
+        container.pack(fill='x', pady=5, padx=10)
+        common_tree = ttk.Treeview(container, columns=common_columns, show="headings")
+        for col in common_columns:
+            common_tree.heading(col, text=col)
+            common_tree.column(col, width=100, anchor='w')
+        for row in common_values:
+            common_tree.insert("", tk.END, values=row)
+        common_tree.pack(side='left', fill='x', expand=True)
+
+        lpwgs_columns = list(self.clinreport.main_table_header_10x)
+        lpwgs_rows = self.clinreport.get_lpwgs_table_data(self.sample)
+        lpwgs_values = [[r[col] for col in lpwgs_columns] for r in lpwgs_rows]
+        lp_frame = ttk.Frame(self.scrollable_frame)
+        lp_frame.pack(pady=10, padx=10, fill="both", expand=True)
+        lp_tree = ttk.Treeview(lp_frame, columns=lpwgs_columns, show="headings")
+        for col in lpwgs_columns:
+            lp_tree.heading(col, text=col)
+            lp_tree.column(col, width=120, anchor='w')
+        for row in lpwgs_values:
+            lp_tree.insert("", tk.END, values=row)
+        lp_tree.config(height=len(lpwgs_values) + 3 if lpwgs_values else 0)
+        lp_tree.pack(side='left', fill='both', expand=True)
+
+    def save_docx_lpwgs(self) -> None:
+        self.doc = self.clinreport.create_doc_lpwgs(self.sample)
+        self.lift()
+        try:
+            self.attributes("-topmost", True)
+            self.update_idletasks()
+        except Exception:
+            pass
+        filepath = filedialog.asksaveasfilename(
+            parent=self,
+            title='Сохранить как ...',
+            defaultextension=".docx",
+            filetypes=[("DOCX files", "*.docx")],
+            initialfile=f'Заключение LPWGS ({str(self.sample).split(".")[0]}).docx'
+        )
+        try:
+            self.attributes("-topmost", False)
+        except Exception:
+            pass
+        if filepath:
+            try:
+                self.doc.save(filepath)
+                messagebox.showinfo("Успешно", "Документ сохранен", parent=self)
+            except Exception as e:
+                messagebox.showerror("Ошибка", f"Ошибка при сохранении документа: {repr(e)}", parent=self)
 
     def close(self) -> None:
         self.destroy()
