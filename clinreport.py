@@ -459,7 +459,7 @@ class ClinReport:
         r_element.append(instr_text)
         r_element.append(fld_char_end)
 
-    def create_doc_lpwgs(self, sample: str, dzm: bool=True) -> Document:
+    def create_doc_lpwgs(self, sample: str, dzm: bool=True, lpwgs_variants: list | None = None) -> Document:
         """
         Template for 10x Case
         """
@@ -470,7 +470,7 @@ class ClinReport:
         CNV_table_data = []
         MT_table_data = []
         
-        lpwgs_variants = self.get_lpwgs_table_data(sample)
+        lpwgs_variants = lpwgs_variants if lpwgs_variants is not None else self.get_lpwgs_table_data(sample)
         main_table_data = self.form_table_data(lpwgs_variants, self.main_table_header_10x)
 
         tech_table_data_10x = [(sample_data[key] for key in [

@@ -162,7 +162,7 @@ class ProcessingWindow(tk.Toplevel):
         self.process_file_callback = process_file_callback
         self.process_file_lpwgs_callback = process_file_lpwgs_callback
         self.title(f"{Path(filepath).name}")
-        self.geometry("300x200")
+        self.geometry("300x200")  # Button isn't visible if 300x150
 
         self.text = tk.Label(self, text="Целевой образец:")
         self.text.pack(pady=10)
@@ -542,40 +542,59 @@ class ConfirmationWindowLPWGS(tk.Toplevel):
             self.canvas.yview_scroll(int(-1 * (event.delta)), "units")
 
     def pack_tableviews_lpwgs(self) -> None:
-        common_columns = [
-            'Номер образца',
-            'Пол пациента',
-            'Возраст пациента',
-            'Предварительный диагноз',
-            'Средняя глубина прочтения генома после секвенирования'
-        ]
-        common_values = [[self.clinreport.data[self.sample][col] for col in common_columns]]
+        # 10x case header (display labels -> data keys)
+        self.case_header_map = {
+            'Лабораторный номер': 'Номер образца',
+            'Пол': 'Пол пациента',
+            'Направительный диагноз ребенка': 'Предварительный диагноз',
+        }
+        common_columns = list(self.case_header_map.keys())
+        common_values = [[self.clinreport.data[self.sample][self.case_header_map[col]] for col in common_columns]]
         container = ttk.Frame(self.scrollable_frame)
         container.pack(fill='x', pady=5, padx=10)
-        common_tree = ttk.Treeview(container, columns=common_columns, show="headings")
+        self.common_columns = common_columns
+        self.common_tableview = Tableview(container, columns=common_columns, show="headings")
         for col in common_columns:
-            common_tree.heading(col, text=col)
-            common_tree.column(col, width=100, anchor='w')
+            self.common_tableview.heading(col, text=col)
+            self.common_tableview.column(col, width=100, anchor='w')
         for row in common_values:
-            common_tree.insert("", tk.END, values=row)
-        common_tree.pack(side='left', fill='x', expand=True)
+            self.common_tableview.insert("", tk.END, values=row)
+        self.common_tableview.pack(side='left', fill='x', expand=True)
 
-        lpwgs_columns = list(self.clinreport.main_table_header_10x)
-        lpwgs_rows = self.clinreport.get_lpwgs_table_data(self.sample)
-        lpwgs_values = [[r[col] for col in lpwgs_columns] for r in lpwgs_rows]
+        self.lpwgs_columns = list(self.clinreport.main_table_header_10x)
+        self.lpwgs_rows = self.clinreport.get_lpwgs_table_data(self.sample)
+        lpwgs_values = [[r[col] for col in self.lpwgs_columns] for r in self.lpwgs_rows]
         lp_frame = ttk.Frame(self.scrollable_frame)
         lp_frame.pack(pady=10, padx=10, fill="both", expand=True)
-        lp_tree = ttk.Treeview(lp_frame, columns=lpwgs_columns, show="headings")
-        for col in lpwgs_columns:
-            lp_tree.heading(col, text=col)
-            lp_tree.column(col, width=120, anchor='w')
+        self.lpwgs_tableview = Tableview(lp_frame, columns=self.lpwgs_columns, show="headings")
+        for col in self.lpwgs_columns:
+            self.lpwgs_tableview.heading(col, text=col)
+            self.lpwgs_tableview.column(col, width=120, anchor='w')
         for row in lpwgs_values:
-            lp_tree.insert("", tk.END, values=row)
-        lp_tree.config(height=len(lpwgs_values) + 3 if lpwgs_values else 0)
-        lp_tree.pack(side='left', fill='both', expand=True)
+            self.lpwgs_tableview.insert("", tk.END, values=row)
+        self.lpwgs_tableview.config(height=len(lpwgs_values) + 3 if lpwgs_values else 0)
+        self.lpwgs_tableview.pack(side='left', fill='both', expand=True)
+
+    def get_tableview_changes(self, tableview) -> list:
+        tableview_changes = []
+        for item in tableview.get_children():
+            values = tableview.item(item, 'values')
+            tableview_changes.append(dict(zip(tableview['columns'], values)))
+        return tableview_changes
+
+    def save_tableviews_changes_lpwgs(self) -> None:
+        if hasattr(self, "common_tableview"):
+            common_changes = self.get_tableview_changes(self.common_tableview)
+            if common_changes:
+                for display_key, value in common_changes[0].items():
+                    data_key = self.case_header_map.get(display_key, display_key)
+                    self.clinreport.data[self.sample][data_key] = value
+        if hasattr(self, "lpwgs_tableview"):
+            self.lpwgs_rows = self.get_tableview_changes(self.lpwgs_tableview)
 
     def save_docx_lpwgs(self) -> None:
-        self.doc = self.clinreport.create_doc_lpwgs(self.sample)
+        self.save_tableviews_changes_lpwgs()
+        self.doc = self.clinreport.create_doc_lpwgs(self.sample, lpwgs_variants=getattr(self, "lpwgs_rows", None))
         self.lift()
         try:
             self.attributes("-topmost", True)
@@ -686,10 +705,12 @@ class Tableview(ttk.Treeview):
     """Editable Treeview with forced dark text on light background"""
     
     def __init__(self, master=None, **kwargs):
+        self._enable_similar_variants = bool(kwargs.pop("enable_similar_variants", False))
         super().__init__(master, **kwargs)
         self._setup_table_style()
         self._text_editor = None
         self._scrollbar = None
+        self._similar_vars_button = None
         self.bind("<Double-1>", self._on_double_click)
         
 
@@ -767,24 +788,30 @@ class Tableview(ttk.Treeview):
 
         if self._similar_vars_button:
             self._similar_vars_button.destroy()
-            
-        self._similar_vars_button = tk.Button(
-            self,
-            text="Похожие варианты",
-            command=lambda: self._show_similar_variants(row_id, col_num),
-            bg="white",
-            fg="black"
-        )
-        self._similar_vars_button.place(x=x+width, y=y, width=100, height=height*4)
+            self._similar_vars_button = None
+
+        # Optional: show "Similar variants" only when supported by parent window.
+        if self._enable_similar_variants and "Ген" in self["columns"]:
+            parent_window = self.winfo_toplevel()
+            if hasattr(parent_window, "show_similar_variants"):
+                self._similar_vars_button = tk.Button(
+                    self,
+                    text="Похожие варианты",
+                    command=lambda: self._show_similar_variants(row_id),
+                    bg="white",
+                    fg="black"
+                )
+                self._similar_vars_button.place(x=x + width, y=y, width=120, height=height * 4)
     
-    def _show_similar_variants(self, row_id, col_num):
-        # Получаем данные текущего варианта
+    def _show_similar_variants(self, row_id):
         values = self.item(row_id, 'values')
         columns = self['columns']
         variant_data = dict(zip(columns, values))
-        
-        # Открываем окно с похожими вариантами
-        SimilarVariantsWindow(self.master, variant_data)
+        parent_window = self.winfo_toplevel()
+        try:
+            parent_window.show_similar_variants(variant_data)
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось открыть похожие варианты: {repr(e)}")
 
         
     def _save_edit(self, row_id, col_num, event=None):
