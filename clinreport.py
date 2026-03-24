@@ -319,6 +319,7 @@ class ClinReport:
                 zygosity = variant["tagsampler_new__zygosity"]
                 zygosity_msg = self.zygosity2msg[zygosity][2] if zygosity else ''
                 dp = variant["tagsampler_new__dp"] or '_'
+                ad = variant['tagsampler_new__ad']
                 dp_msg = f"с глубиной прочтения {dp}x"
                 gerp_rs_score = variant["gerp__gerp_rs"]
                 insilico_prediction = self.predict_insilico(variant["dbscsnv__ada_score"], variant["metarnn__score"], variant["revel__score"], variant['alphamissense__score'], variant["phylop100__score"])
@@ -337,7 +338,8 @@ class ClinReport:
                 intro_paragraph = doc.add_paragraph('\n')
                 intro_paragraph.add_run(f'Обнаружен ранее _ описанный в литературе вариант ({variation_msg}) {zygosity_msg} {gene_part_msg} гена ')
                 intro_paragraph.add_run(f'{symbol}').italic = True
-                intro_paragraph.add_run(f', {leading_to_msg}, {dp_msg}.')
+                intro_paragraph.add_run(f', {leading_to_msg}.')
+                intro_paragraph.add_run(f'Глубина покрытия в данной позиции составляет {dp}х, из них {ad} прочтений соответствуют альтернативному аллелю.')
 
                 if omim_pheno:
                     omim_paragraph = doc.add_paragraph()
