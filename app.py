@@ -207,20 +207,6 @@ class ConfirmationWindow(tk.Toplevel):
         self.style = ttk.Style(self)
         self.style.configure('Treeview', rowheight=40)
 
-        if not lpwgs_target:
-            self.doc_type_var = tk.StringVar(value="Стандартный отчет")
-            self.doc_type_label = tk.Label(self, text="Тип отчета:")
-            self.doc_type_label.pack(pady=(10, 0))
-            self.doc_type_combo = ttk.Combobox(
-                self,
-                textvariable=self.doc_type_var,
-                values=["Стандартный отчет", "10x отчет"],
-                state="readonly",
-                width=30
-            )
-            self.doc_type_combo.current(0)
-            self.doc_type_combo.pack(pady=(0, 10))
-
         # Action buttons row (horizontal)
         self.actions_frame = ttk.Frame(self)
         self.actions_frame.pack(pady=8)
@@ -432,11 +418,7 @@ class ConfirmationWindow(tk.Toplevel):
         if self.lpwgs_target:
             self.doc = self.clinreport.create_doc(self.sample)
         else:
-            selected_type = getattr(self, "doc_type_var", None)
-            if selected_type and selected_type.get() == "10x отчет":
-                self.doc = self.clinreport.create_doc_10x(self.sample)
-            else:
-                self.doc = self.clinreport.create_doc(self.sample)
+            self.doc = self.clinreport.create_doc(self.sample)
 
         # Ensure save dialog appears in front of this window.
         self.lift()
