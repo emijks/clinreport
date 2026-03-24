@@ -2,20 +2,18 @@ from sqlalchemy import create_engine
 from urllib.parse import quote
 from contextlib import contextmanager
 import pandas as pd
-
+import json
 
 class Database:
 
     def __init__(self, db_creds: str | dict):
         self.db_creds = self.setup_creds(db_creds)
 
-
     def setup_creds(self, creds: str | dict) -> dict:
         if isinstance(creds, dict):
             return creds
         with open(creds, 'r') as fh:
             return json.load(fh)
-
 
     @contextmanager
     def conn(self):
@@ -26,7 +24,6 @@ class Database:
         with engine.connect() as conn:
             yield conn
             conn.commit()
-
 
     def insert(self, payload):
         with self.conn() as conn:
