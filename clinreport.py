@@ -309,6 +309,9 @@ class ClinReport:
                     leading_to_msg = f'который приводит к образованию преждевременного стоп-кодона {hgvsp_msg}'
                 elif 'splice' in consequence:
                     leading_to_msg = f'который приводит к разрушению канонического сайта сплайсинга'
+                else:
+                    leading_to_msg = f'_'
+
                 omim_pheno, omim_id = variant["vep_omim_pheno__pheno"], variant["vep_omim_pheno__id"]
                 gnomad4aggregated = self.get_gnomad4aggregated(variant)
                 af_msg = self.float2percent(gnomad4aggregated['AF']) if gnomad4aggregated['AF'] else ''
