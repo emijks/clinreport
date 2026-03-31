@@ -135,7 +135,8 @@ class MainWindow(tk.Tk):
             self.clinreport = ClinReport(filepath, clinician=clinician, ru_annotations=self.ru_annotations)
             self.clinreport.get_data()
             self.clinreport.target_sample = target_sample
-            ConfirmationWindow(self, target_sample)
+            for sample in self.clinreport.all_samples:
+                    ConfirmationWindow(self, sample)
         except Exception as e:
             messagebox.showerror("Ошибка", f"Ошибка при обработке файла: {traceback.format_exc()}")
 
