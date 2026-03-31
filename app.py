@@ -146,13 +146,16 @@ class MainWindow(tk.Tk):
             clinician = self.config.get('clinician', 'Не указан')
             self.clinreport = ClinReport(filepath, clinician=clinician, ru_annotations=self.ru_annotations)
             self.clinreport.get_data()
-            self.clinreport.target_sample = target_sample
+            # Quick fix. From dropdown menu we get str but clinreport.py may use None if sample doesn't have a name
+            target_sample = self.clinreport.target_sample if self.clinreport.target_sample != "None" else None
             ConfirmationWindow(self, target_sample, lpwgs_target=True)
             for sample in self.clinreport.all_samples:
                 if sample != target_sample:
+                    # Just in case
+                    sample = sample if sample != "None" else None
                     ConfirmationWindowLPWGS(self, sample)
         except Exception as e:
-            messagebox.showerror("Ошибка", f"Ошибка при обработке файла: {traceback.format_exc()}")
+            messagebox.showerror(   "Ошибка", f"Ошибка при обработке файла: {traceback.format_exc()}")
 
 
 if __name__ == "__main__":
