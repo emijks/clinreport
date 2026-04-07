@@ -32,7 +32,7 @@ class MainWindow(tk.Tk):
         self.settings_button = tk.Button(self, text="Настройки", command=self.open_settings)
         self.settings_button.pack(pady=20)
 
-        self.config_path = self.get_config_path('clinreport_config.json')
+        self.config_path = self.get_config_path('config.json')
         self.config = load_config(self.config_path)
         self.config = load_config(self.config_path)
 
