@@ -131,7 +131,7 @@ class MainWindow(tk.Tk):
     def process_file(self, filepath, target_sample):
         """Обрабатывает файл в зависимости от выбранного типа."""
         try:
-            clinician = self.config.get('clinician', 'Не указан')
+            clinician = self.config.get('clinician', '')
             self.clinreport = ClinReport(filepath, clinician=clinician, ru_annotations=self.ru_annotations)
             self.clinreport.get_data()
             self.clinreport.target_sample = target_sample
@@ -143,7 +143,7 @@ class MainWindow(tk.Tk):
     def process_file_lpwgs(self, filepath, target_sample):
         """Обрабатывает файл в режиме LPWGS: целевой — стандартный отчёт, нецелевые — технический документ 10x."""
         try:
-            clinician = self.config.get('clinician', 'Не указан')
+            clinician = self.config.get('clinician', '')
             self.clinreport = ClinReport(filepath, clinician=clinician, ru_annotations=self.ru_annotations)
             self.clinreport.get_data()
             # Quick fix. From dropdown menu we get str but clinreport.py may use None if sample doesn't have a name
