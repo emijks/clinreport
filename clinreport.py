@@ -444,7 +444,8 @@ class ClinReport:
         footer_para.paragraph_format.tab_stops.add_tab_stop(right_edge, alignment=WD_TAB_ALIGNMENT.RIGHT)
 
         footer_para.add_run(str(sample))
-        footer_para.add_run("\tСтраница ")
+        footer_para.add_run("\t\t")
+        footer_para.add_run("Страница ")
         run = footer_para.add_run()
         self._add_field(run._r, "PAGE")
         footer_para.add_run(" из ")
