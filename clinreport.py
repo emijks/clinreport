@@ -1,10 +1,11 @@
 #! /usr/bin/env python3
 
 from docx import Document
+from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml import OxmlElement
-from docx.oxml.ns import qn 
+from docx.oxml.ns import qn
 from datetime import date
 from math import log, floor
 import argparse
@@ -237,41 +238,60 @@ class ClinReport:
         causative_variants_data = sum([self.filter_variants(sample_variants_data, note) for note in ['1', '2', '3']], [])
 
         doc = Document()
-        doc.add_heading('ОТЧЕТ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
-        doc.add_paragraph('по результатам анализа\nданных секвенирования ДНК\n\n').alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_heading('ОТЧЕТ', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph('по результатам анализа\nданных секвенирования ДНК\n').alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        self.add_table(doc, case_table_data, self.case_table_header, transpose=True)
+        self.add_table(doc, case_table_data, self.case_table_header, transpose=True, bold=True)
 
-        doc.add_heading('РЕЗУЛЬТАТЫ ИССЛЕДОВАНИЯ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_heading('РЕЗУЛЬТАТЫ ИССЛЕДОВАНИЯ', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        doc.add_paragraph('Патогенные варианты нуклеотидной последовательности, являющиеся вероятной причиной заболевания', style='List Bullet')
-        self.add_table(doc, SNV_P_table_data, self.SNV_table_header, italic=True)
+        p = doc.add_paragraph('Патогенные варианты нуклеотидной последовательности, являющиеся вероятной причиной заболевания', style='List Number')
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
+        self.add_table(doc, SNV_P_table_data, self.SNV_table_header, italic=True, bold=True)
 
-        doc.add_paragraph('Вероятно патогенные варианты нуклеотидной последовательности, являющиеся возможной причиной заболевания', style='List Bullet')
-        self.add_table(doc, SNV_LP_table_data, self.SNV_table_header, italic=True)
+        p = doc.add_paragraph('Вероятно патогенные варианты нуклеотидной последовательности, являющиеся возможной причиной заболевания', style='List Number')
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
+        self.add_table(doc, SNV_LP_table_data, self.SNV_table_header, italic=True, bold=True)
 
-        doc.add_paragraph('Варианты нуклеотидной последовательности с неопределенной клинической значимостью', style='List Bullet')
-        self.add_table(doc, SNV_VUS_table_data, self.SNV_table_header, italic=True)
+        p = doc.add_paragraph('Варианты нуклеотидной последовательности с неопределенной клинической значимостью', style='List Number')
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
+        self.add_table(doc, SNV_VUS_table_data, self.SNV_table_header, italic=True, bold=True)
 
-        doc.add_paragraph('Структурные генетические варианты', style='List Bullet')
+        p = doc.add_paragraph('Структурные генетические варианты', style='List Number')
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
         self.add_table(doc, CNV_table_data, self.CNV_table_header)
 
-        doc.add_paragraph('Варианты в митохондриальной ДНК', style='List Bullet')
-        self.add_table(doc, MT_table_data, self.MT_table_header, italic=True)
+        p = doc.add_paragraph('Варианты в митохондриальной ДНК', style='List Number')
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
+        self.add_table(doc, MT_table_data, self.MT_table_header, italic=True, bold=True)
 
-        doc.add_paragraph('Исследование числа клинически значимых коротких тандемных повторов', style='List Bullet')
-        self.add_table(doc, STR_table_data, self.STR_table_header, italic=True)
+        p = doc.add_paragraph('Исследование числа клинически значимых коротких тандемных повторов', style='List Number')
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
+        self.add_table(doc, STR_table_data, self.STR_table_header, italic=True, bold=True)
 
-        doc.add_paragraph('Клинически значимые варианты, не связанные с основным диагнозом', style='List Bullet')
-        self.add_table(doc, SF_table_data, self.SNV_table_header, italic=True)
+        p = doc.add_paragraph('Клинически значимые варианты, не связанные с основным диагнозом', style='List Number')
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
+        self.add_table(doc, SF_table_data, self.SNV_table_header, italic=True, bold=True)
 
         if dzm:
-            doc.add_paragraph('Носительство вероятно патогенных вариантов, не связанных с основным диагнозом', style='List Bullet')
-            self.add_table(doc, C_table_data, self.C_table_header)
+            p = doc.add_paragraph('Носительство вероятно патогенных вариантов, не связанных с основным диагнозом', style='List Number')
+            p.paragraph_format.space_before = Pt(12)
+            p.runs[0].bold = True
+            self.add_table(doc, C_table_data, self.C_table_header, italic=True, bold=True)
 
-        doc.add_paragraph('* Частоты аллелей отражают максимальную частоту в популяции и приведены по базе gnomAD v4.1.0 (выборка до 807,162 человек).\n')
+        p = doc.add_paragraph('* Частоты аллелей отражают максимальную частоту в популяции и приведены по базе gnomAD v4.1.0 (выборка до 807,162 человек).\n')
+        p.paragraph_format.space_before = Pt(12)
 
-        doc.add_heading('ИНТЕРПРЕТАЦИЯ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h = doc.add_heading('ИНТЕРПРЕТАЦИЯ', level=1)
+        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h.paragraph_format.space_after = Pt(12)
 
         doc.add_paragraph('Был проведен поиск вариантов, ассоциированных с направительным диагнозом у пробанда и прочими наследственными заболеваниями со сходными фенотипическими проявлениями.')
 
@@ -297,20 +317,20 @@ class ClinReport:
                 elif intron:
                     gene_part_msg = f"в {intron.split('/')[0]} интроне из {intron.split('/')[1]} интронов"
                 if 'missense' in consequence:
-                    leading_to_msg = f'который приводит к аминокислотной замене {hgvsp_msg}'
+                    leading_to_msg = f', который приводит к аминокислотной замене {hgvsp_msg}. '
                 elif 'synon' in consequence:
-                    leading_to_msg = f'который приводит / может приводить к аберрантному сплайсингу {hgvsp_msg}'
+                    leading_to_msg = f', который приводит / может приводить к аберрантному сплайсингу {hgvsp_msg}. '
                 elif 'intron' in consequence:
-                    leading_to_msg = f'который приводит / может приводить к аберрантному сплайсингу'
+                    leading_to_msg = f', который приводит / может приводить к аберрантному сплайсингу. '
                 elif 'shift' in consequence:
                     indel_type = 'вставке' if indel_size > 0 else 'удалению'
-                    leading_to_msg = f'который приводит к {indel_type} {abs(indel_size)} нуклеотидов, сдвигу рамки считывания и образованию преждевременного стоп-кодона {hgvsp_msg}'
+                    leading_to_msg = f', который приводит к {indel_type} {abs(indel_size)} нуклеотидов, сдвигу рамки считывания и образованию преждевременного стоп-кодона {hgvsp_msg}. '
                 elif 'stop' in consequence:
-                    leading_to_msg = f'который приводит к образованию преждевременного стоп-кодона {hgvsp_msg}'
+                    leading_to_msg = f', который приводит к образованию преждевременного стоп-кодона {hgvsp_msg}. '
                 elif 'splice' in consequence:
-                    leading_to_msg = f'который приводит к разрушению канонического сайта сплайсинга'
+                    leading_to_msg = f', который приводит к разрушению канонического сайта сплайсинга. '
                 else:
-                    leading_to_msg = f'_'
+                    leading_to_msg = '. '
 
                 omim_pheno, omim_id = variant["vep_omim_pheno__pheno"], variant["vep_omim_pheno__id"]
                 gnomad4aggregated = self.get_gnomad4aggregated(variant)
@@ -338,7 +358,7 @@ class ClinReport:
                 intro_paragraph = doc.add_paragraph('\n')
                 intro_paragraph.add_run(f'Обнаружен ранее _ описанный в литературе вариант ({variation_msg}) {zygosity_msg} {gene_part_msg} гена ')
                 intro_paragraph.add_run(f'{symbol}').italic = True
-                intro_paragraph.add_run(f', {leading_to_msg}.')
+                intro_paragraph.add_run(f'{leading_to_msg}')
                 intro_paragraph.add_run(f'Глубина покрытия в данной позиции составляет {dp}х, из них {ad} прочтений соответствуют альтернативному аллелю.')
 
                 if omim_pheno:
@@ -417,12 +437,16 @@ class ClinReport:
         doc.add_paragraph('Оценка клинической значимости (патогенности) выявленных вариантов проводилась на основании российских рекомендаций для интерпретации данных, полученных методами массового параллельного секвенирования (MPS).')
         doc.add_paragraph().add_run('Результаты данного исследования могут быть правильно интерпретированы только врачом-генетиком.').bold = True
 
-        doc.add_heading('ТЕХНИЧЕСКИЕ ХАРАКТЕРИСТИКИ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h = doc.add_heading('ТЕХНИЧЕСКИЕ ХАРАКТЕРИСТИКИ', level=1)
+        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h.paragraph_format.space_after = Pt(12)
         self.add_table(doc, tech_table_data, self.tech_table_header, transpose=True)
 
-        doc.add_heading('СПИСОК ЛИТЕРАТУРЫ И БАЗ ДАННЫХ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h = doc.add_heading('СПИСОК ЛИТЕРАТУРЫ И БАЗ ДАННЫХ', level=1)
+        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h.paragraph_format.space_after = Pt(12)
         for source in self.sources:
-            doc.add_paragraph(source, style='List Number')
+            doc.add_paragraph(source, style='List Number 2')
         doc.add_paragraph('\n')
 
         doc.add_paragraph(f'Дата выдачи отчета: {date.today()}')
@@ -452,6 +476,7 @@ class ClinReport:
         run = footer_para.add_run()
         self._add_field(run._r, "NUMPAGES")
 
+
     def _add_field(self, r_element, field_code: str) -> None:
         """Добавляет поле (PAGE, NUMPAGES и т.д.) в run element."""
         fld_char_begin = OxmlElement("w:fldChar")
@@ -465,14 +490,13 @@ class ClinReport:
         r_element.append(instr_text)
         r_element.append(fld_char_end)
 
+
     def create_doc_lpwgs(self, sample: str, dzm: bool=True, lpwgs_variants: list | None = None) -> Document:
         """
         Template for 10x Case
         """
         sample_data = self.data[sample]
-
         case_table_data = [(sample_data[key] for key in ['Номер образца', 'Пол пациента', 'Предварительный диагноз'])]
-
         CNV_table_data = []
         MT_table_data = []
         
@@ -489,31 +513,39 @@ class ClinReport:
             'Возможные технические/биологические ограничения метода',
         ])]
 
-
         doc = Document()
         
-        doc.add_heading('ТЕХНИЧЕСКОЕ ЗАКЛЮЧЕНИЕ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
-        doc.add_paragraph('по результатам биоинформатического анализа').alignment = WD_ALIGN_PARAGRAPH.CENTER
-        doc.add_paragraph('данных полногеномного секвенирования ДНК').alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_heading('ТЕХНИЧЕСКОЕ ЗАКЛЮЧЕНИЕ', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph('по результатам биоинформатического анализа\nданных полногеномного секвенирования ДНК\n').alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        self.add_table(doc, case_table_data, self.case_table_header_10x, transpose=True)
+        self.add_table(doc, case_table_data, self.case_table_header_10x, transpose=True, bold=True)
 
-        doc.add_heading('РЕЗУЛЬТАТЫ ИССЛЕДОВАНИЯ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h = doc.add_heading('РЕЗУЛЬТАТЫ ИССЛЕДОВАНИЯ', level=1)
+        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h.paragraph_format.space_after = Pt(12)
+
         self.add_table(doc, main_table_data, self.main_table_header_10x)
 
-        doc.add_paragraph("Структурные генетические варианты").alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p = doc.add_paragraph("Структурные генетические варианты")
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
         self.add_table(doc, CNV_table_data, self.CNV_table_header)
 
-        doc.add_paragraph("Варианты в митохондриальной ДНК").alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p = doc.add_paragraph("Варианты в митохондриальной ДНК")
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
         self.add_table(doc, MT_table_data, self.MT_table_header)
 
-        doc.add_paragraph("СВЕДЕНИЯ О КАЧЕСТВЕ ИССЛЕДОВАНИЯ").alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h = doc.add_heading("СВЕДЕНИЯ О КАЧЕСТВЕ ИССЛЕДОВАНИЯ")
+        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h.paragraph_format.space_after = Pt(12)
         self.add_table(doc, tech_table_data_10x, self.tech_table_header_10x, transpose=True)
 
         self.add_footer_pages(doc, sample)
 
         return doc
-
 
 
     def lpwgs_row(self, tv: dict, raw: dict | None, sample: str) -> dict:
@@ -592,16 +624,18 @@ class ClinReport:
         return snv_table_data 
 
 
-    def add_table(self, document: Document, table_data: list, table_header: tuple, italic: bool=False, transpose: bool=False) -> None:
+    def add_table(self, document: Document, table_data: list, table_header: tuple, italic: bool=False, bold: bool=False, transpose: bool=False) -> None:
         table_data.insert(0, table_header)
         if transpose:
             table_data = list(zip(*table_data))
         table = document.add_table(rows=len(table_data), cols=len(table_data[0]))
         for i in range(len(table_data)):
             for j in range(len(table_data[0])):
-                cell_paragraph_run = table.rows[i].cells[j].add_paragraph().add_run(str(table_data[i][j]))
+                cell_paragraph_run = table.rows[i].cells[j].paragraphs[0].add_run(str(table_data[i][j]))
                 if italic and i > 0 and j == 0:
                     cell_paragraph_run.italic = True
+                if bold and ((not transpose and i == 0) or (transpose and j == 0)):
+                    cell_paragraph_run.bold = True
         if len(table_data) == 1:
             table.add_row()
             table.cell(i+1, 0).merge(table.cell(i+1, j))
