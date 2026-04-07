@@ -1,23 +1,27 @@
 #! /usr/bin/env python3
 
 from docx import Document
-from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 from datetime import date
 from math import log, floor
 import argparse
 import sqlite3
 import pandas as pd
-
+import json
 
 class ClinReport:
 
-    def __init__(self, cravat_sqlite: str, target_sample: str | None = None, clinician: str | None = None, ru_annotations: dict | None = None):
+    def __init__(self, cravat_sqlite: str, target_sample: str | None = None, clinician: str | None = None, ru_annotations: dict | None = None, report_type: str = "default"):
         self.cravat_sqlite = cravat_sqlite
         self.all_samples = self.get_all_samples()
         self.target_sample = target_sample or self.all_samples[0]
-        self.clinician = clinician or ''
+        self.clinician = clinician
         self.ru_annotations = ru_annotations
+        self.report_type = report_type
         self.data = None
 
 
@@ -35,7 +39,10 @@ class ClinReport:
         reports = {}
         self.get_data()
         for sample in self.all_samples:
-            doc = self.create_doc(sample)
+            if self.report_type == "10x":
+                doc = self.create_doc_10x(sample)  
+            else:
+                doc = self.create_doc(sample)
             reports[sample] = doc
         return reports
 
@@ -45,12 +52,16 @@ class ClinReport:
         Parse, filter and process SQLite variants for all samples
         """
         variants_data = self.get_variants_data()
+        if not hasattr(self, 'clinician') or self.clinician is None:
+            self.clinician = 'Не указан'
         self.data = {
             sample: {
                 'Номер образца': str(sample).split(".")[0],
                 'Пол пациента': '_',
                 'Возраст пациента': '_',
                 'Предварительный диагноз': '_',
+                'Клиницист': self.clinician,
+                'Дата заключения': date.today().isoformat(),
                 'Метод исследования': 'полногеномное секвенирование (Whole Genome Sequencing)',
                 'Средняя глубина прочтения генома после секвенирования': '_x',
                 'Количество прочитанных нуклеотидов': 'не менее 90 млрд',
@@ -61,6 +72,19 @@ class ClinReport:
                     '\n\n'
                     '2.    число прочтений с качеством Q30: не менее 80% от числа прочтений, полученных в результате секвенирования'
                 ),
+
+                # 10x
+                'Тип библиотеки': 'PCR free',
+                'Возможные технические/биологические ограничения метода': (
+                    'Сбалансированные транслокации'
+                    '\n'
+                    'Тринуклеотидные повторы'
+                    '\n'
+                    'Крупные инсерции/делеции'
+                    '\n'
+                    'Варианты в состоянии мозаицизма'
+                ),
+
                 'variants_data': self.process_variants_data(self.filter_variants(variants_data, by_sample=sample))
             }
                 for sample in self.all_samples
@@ -131,12 +155,12 @@ class ClinReport:
                 inher_msg = self.ru_annotations.get('secondary', {}).get('Inheritance', {}).get(symbol, inher_msg)
             else:
                 omim_pheno = self.ru_annotations.get('omim', {}).get('Ассоциированное заболевание', {}).get(symbol, omim_pheno)
-        if note == '8':
-            # "carrier" variants
+        if note in ['1', '2', '3']:
+            clinsig_msg = self.note2clinsig[note].capitalize()
+        else:
+            # non-causative variants
             clinvar_sig = variant_data["clinvar_new__sig"]
             clinsig_msg = self.clinsig2msg.get(clinvar_sig, '-')
-        else:
-            clinsig_msg = self.note2clinsig[note].capitalize()
         zygosity_inher_msg = f'{zygosity_msg}\n({inher_msg})'
         clin_type = self.note2type.get(note)
         variant_data.update({
@@ -146,9 +170,13 @@ class ClinReport:
             "Зиготность (Тип наследования)": zygosity_inher_msg,
             "Частота*": af_msg,
             "Кол-во прочтений (АЛТ/ОБЩ)": cover_msg,
+            "Ручные критерии": "",
             "Патогенность": clinsig_msg,
             "Тип": clin_type
         })
+        # #### 10x/LPWGS fields - refactor later
+        variant_data["HGVSg"] = variant_data.get("vep_csq__hgvsg")
+        # ####
         return variant_data
 
 
@@ -158,6 +186,8 @@ class ClinReport:
             "Пол пациента",
             "Возраст пациента",
             "Предварительный диагноз",
+            "Клиницист",
+            "Дата заключения"
         ]
         variant_data_columns = [
             "Ген",
@@ -166,13 +196,23 @@ class ClinReport:
             "Зиготность (Тип наследования)",
             "Частота*",
             "Кол-во прочтений (АЛТ/ОБЩ)",
+            "Ручные критерии",
             "Патогенность",
             "Тип"
         ]
-        sample_payload = [{col: sample_variant_data[col] for col in variant_data_columns} for sample_variant_data in sample_data['variants_data']]
-        for sample_variant_data in sample_payload:
-            sample_variant_data.update({col: sample_data[col] for col in common_columns})
+
+        sample_payload = []
+        
+
+        for variant in sample_data['variants_data']:
+            record = {
+            **{col: sample_data[col] for col in common_columns},
+            **{col: variant[col] for col in variant_data_columns}
+            }
+            sample_payload.append(record)
+    
         return pd.DataFrame(sample_payload)
+        
 
 
     def create_doc(self, sample: str, dzm: bool=True) -> Document:
@@ -198,41 +238,60 @@ class ClinReport:
         causative_variants_data = sum([self.filter_variants(sample_variants_data, note) for note in ['1', '2', '3']], [])
 
         doc = Document()
-        doc.add_heading('ОТЧЕТ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
-        doc.add_paragraph('по результатам анализа\nданных секвенирования ДНК\n\n').alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_heading('ОТЧЕТ', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph('по результатам анализа\nданных секвенирования ДНК\n').alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        self.add_table(doc, case_table_data, self.case_table_header, transpose=True)
+        self.add_table(doc, case_table_data, self.case_table_header, transpose=True, bold=True)
 
-        doc.add_heading('РЕЗУЛЬТАТЫ ИССЛЕДОВАНИЯ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_heading('РЕЗУЛЬТАТЫ ИССЛЕДОВАНИЯ', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-        doc.add_paragraph('Патогенные варианты нуклеотидной последовательности, являющиеся вероятной причиной заболевания', style='List Bullet')
-        self.add_table(doc, SNV_P_table_data, self.SNV_table_header, italic=True)
+        p = doc.add_paragraph('Патогенные варианты нуклеотидной последовательности, являющиеся вероятной причиной заболевания', style='List Number')
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
+        self.add_table(doc, SNV_P_table_data, self.SNV_table_header, italic=True, bold=True)
 
-        doc.add_paragraph('Вероятно патогенные варианты нуклеотидной последовательности, являющиеся возможной причиной заболевания', style='List Bullet')
-        self.add_table(doc, SNV_LP_table_data, self.SNV_table_header, italic=True)
+        p = doc.add_paragraph('Вероятно патогенные варианты нуклеотидной последовательности, являющиеся возможной причиной заболевания', style='List Number')
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
+        self.add_table(doc, SNV_LP_table_data, self.SNV_table_header, italic=True, bold=True)
 
-        doc.add_paragraph('Варианты нуклеотидной последовательности с неопределенной клинической значимостью', style='List Bullet')
-        self.add_table(doc, SNV_VUS_table_data, self.SNV_table_header, italic=True)
+        p = doc.add_paragraph('Варианты нуклеотидной последовательности с неопределенной клинической значимостью', style='List Number')
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
+        self.add_table(doc, SNV_VUS_table_data, self.SNV_table_header, italic=True, bold=True)
 
-        doc.add_paragraph('Структурные генетические варианты', style='List Bullet')
+        p = doc.add_paragraph('Структурные генетические варианты', style='List Number')
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
         self.add_table(doc, CNV_table_data, self.CNV_table_header)
 
-        doc.add_paragraph('Варианты в митохондриальной ДНК', style='List Bullet')
-        self.add_table(doc, MT_table_data, self.MT_table_header, italic=True)
+        p = doc.add_paragraph('Варианты в митохондриальной ДНК', style='List Number')
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
+        self.add_table(doc, MT_table_data, self.MT_table_header, italic=True, bold=True)
 
-        doc.add_paragraph('Исследование числа клинически значимых коротких тандемных повторов', style='List Bullet')
-        self.add_table(doc, STR_table_data, self.STR_table_header, italic=True)
+        p = doc.add_paragraph('Исследование числа клинически значимых коротких тандемных повторов', style='List Number')
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
+        self.add_table(doc, STR_table_data, self.STR_table_header, italic=True, bold=True)
 
-        doc.add_paragraph('Клинически значимые варианты, не связанные с основным диагнозом', style='List Bullet')
-        self.add_table(doc, SF_table_data, self.SNV_table_header, italic=True)
+        p = doc.add_paragraph('Клинически значимые варианты, не связанные с основным диагнозом', style='List Number')
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
+        self.add_table(doc, SF_table_data, self.SNV_table_header, italic=True, bold=True)
 
         if dzm:
-            doc.add_paragraph('Носительство вероятно патогенных вариантов, не связанных с основным диагнозом', style='List Bullet')
-            self.add_table(doc, C_table_data, self.C_table_header)
+            p = doc.add_paragraph('Носительство вероятно патогенных вариантов, не связанных с основным диагнозом', style='List Number')
+            p.paragraph_format.space_before = Pt(12)
+            p.runs[0].bold = True
+            self.add_table(doc, C_table_data, self.C_table_header, italic=True, bold=True)
 
-        doc.add_paragraph('* Частоты аллелей отражают максимальную частоту в популяции и приведены по базе gnomAD v4.1.0 (выборка до 807,162 человек).\n')
+        p = doc.add_paragraph('* Частоты аллелей отражают максимальную частоту в популяции и приведены по базе gnomAD v4.1.0 (выборка до 807,162 человек).\n')
+        p.paragraph_format.space_before = Pt(12)
 
-        doc.add_heading('ИНТЕРПРЕТАЦИЯ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h = doc.add_heading('ИНТЕРПРЕТАЦИЯ', level=1)
+        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h.paragraph_format.space_after = Pt(12)
 
         doc.add_paragraph('Был проведен поиск вариантов, ассоциированных с направительным диагнозом у пробанда и прочими наследственными заболеваниями со сходными фенотипическими проявлениями.')
 
@@ -258,18 +317,21 @@ class ClinReport:
                 elif intron:
                     gene_part_msg = f"в {intron.split('/')[0]} интроне из {intron.split('/')[1]} интронов"
                 if 'missense' in consequence:
-                    leading_to_msg = f'который приводит к аминокислотной замене {hgvsp_msg}'
+                    leading_to_msg = f', который приводит к аминокислотной замене {hgvsp_msg}. '
                 elif 'synon' in consequence:
-                    leading_to_msg = f'который приводит / может приводить к аберрантному сплайсингу {hgvsp_msg}'
+                    leading_to_msg = f', который приводит / может приводить к аберрантному сплайсингу {hgvsp_msg}. '
                 elif 'intron' in consequence:
-                    leading_to_msg = f'который приводит / может приводить к аберрантному сплайсингу'
+                    leading_to_msg = f', который приводит / может приводить к аберрантному сплайсингу. '
                 elif 'shift' in consequence:
                     indel_type = 'вставке' if indel_size > 0 else 'удалению'
-                    leading_to_msg = f'который приводит к {indel_type} {abs(indel_size)} нуклеотидов, сдвигу рамки считывания и образованию преждевременного стоп-кодона {hgvsp_msg}'
+                    leading_to_msg = f', который приводит к {indel_type} {abs(indel_size)} нуклеотидов, сдвигу рамки считывания и образованию преждевременного стоп-кодона {hgvsp_msg}. '
                 elif 'stop' in consequence:
-                    leading_to_msg = f'который приводит к образованию преждевременного стоп-кодона {hgvsp_msg}'
+                    leading_to_msg = f', который приводит к образованию преждевременного стоп-кодона {hgvsp_msg}. '
                 elif 'splice' in consequence:
-                    leading_to_msg = f'который приводит к разрушению канонического сайта сплайсинга'
+                    leading_to_msg = f', который приводит к разрушению канонического сайта сплайсинга. '
+                else:
+                    leading_to_msg = '. '
+
                 omim_pheno, omim_id = variant["vep_omim_pheno__pheno"], variant["vep_omim_pheno__id"]
                 gnomad4aggregated = self.get_gnomad4aggregated(variant)
                 af_msg = self.float2percent(gnomad4aggregated['AF']) if gnomad4aggregated['AF'] else ''
@@ -277,6 +339,7 @@ class ClinReport:
                 zygosity = variant["tagsampler_new__zygosity"]
                 zygosity_msg = self.zygosity2msg[zygosity][2] if zygosity else ''
                 dp = variant["tagsampler_new__dp"] or '_'
+                ad = variant['tagsampler_new__ad']
                 dp_msg = f"с глубиной прочтения {dp}x"
                 gerp_rs_score = variant["gerp__gerp_rs"]
                 insilico_prediction = self.predict_insilico(variant["dbscsnv__ada_score"], variant["metarnn__score"], variant["revel__score"], variant['alphamissense__score'], variant["phylop100__score"])
@@ -295,7 +358,8 @@ class ClinReport:
                 intro_paragraph = doc.add_paragraph('\n')
                 intro_paragraph.add_run(f'Обнаружен ранее _ описанный в литературе вариант ({variation_msg}) {zygosity_msg} {gene_part_msg} гена ')
                 intro_paragraph.add_run(f'{symbol}').italic = True
-                intro_paragraph.add_run(f', {leading_to_msg}, {dp_msg}.')
+                intro_paragraph.add_run(f'{leading_to_msg}')
+                intro_paragraph.add_run(f'Глубина покрытия в данной позиции составляет {dp}х, из них {ad} прочтений соответствуют альтернативному аллелю.')
 
                 if omim_pheno:
                     omim_paragraph = doc.add_paragraph()
@@ -373,18 +437,159 @@ class ClinReport:
         doc.add_paragraph('Оценка клинической значимости (патогенности) выявленных вариантов проводилась на основании российских рекомендаций для интерпретации данных, полученных методами массового параллельного секвенирования (MPS).')
         doc.add_paragraph().add_run('Результаты данного исследования могут быть правильно интерпретированы только врачом-генетиком.').bold = True
 
-        doc.add_heading('ТЕХНИЧЕСКИЕ ХАРАКТЕРИСТИКИ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h = doc.add_heading('ТЕХНИЧЕСКИЕ ХАРАКТЕРИСТИКИ', level=1)
+        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h.paragraph_format.space_after = Pt(12)
         self.add_table(doc, tech_table_data, self.tech_table_header, transpose=True)
 
-        doc.add_heading('СПИСОК ЛИТЕРАТУРЫ И БАЗ ДАННЫХ\n', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h = doc.add_heading('СПИСОК ЛИТЕРАТУРЫ И БАЗ ДАННЫХ', level=1)
+        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h.paragraph_format.space_after = Pt(12)
         for source in self.sources:
-            doc.add_paragraph(source, style='List Number')
+            doc.add_paragraph(source, style='List Number 2')
         doc.add_paragraph('\n')
 
         doc.add_paragraph(f'Дата выдачи отчета: {date.today()}')
         doc.add_paragraph(f'Клинический биоинформатик: {self.clinician}')
 
         return doc
+
+
+    def add_footer_pages(self, doc: Document, sample: str) -> None:
+        """
+        Добавляет футер sample и "Страница X из Y".
+        """
+        section = doc.sections[0]
+        right_edge = section.page_width - section.left_margin - section.right_margin
+
+        footer_para = section.footer.paragraphs[0]
+        footer_para.clear()
+        footer_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        footer_para.paragraph_format.tab_stops.add_tab_stop(right_edge, alignment=WD_TAB_ALIGNMENT.RIGHT)
+
+        footer_para.add_run(str(sample))
+        footer_para.add_run("\t\t")
+        footer_para.add_run("Страница ")
+        run = footer_para.add_run()
+        self._add_field(run._r, "PAGE")
+        footer_para.add_run(" из ")
+        run = footer_para.add_run()
+        self._add_field(run._r, "NUMPAGES")
+
+
+    def _add_field(self, r_element, field_code: str) -> None:
+        """Добавляет поле (PAGE, NUMPAGES и т.д.) в run element."""
+        fld_char_begin = OxmlElement("w:fldChar")
+        fld_char_begin.set(qn("w:fldCharType"), "begin")
+        instr_text = OxmlElement("w:instrText")
+        instr_text.set(qn("xml:space"), "preserve")
+        instr_text.text = field_code
+        fld_char_end = OxmlElement("w:fldChar")
+        fld_char_end.set(qn("w:fldCharType"), "end")
+        r_element.append(fld_char_begin)
+        r_element.append(instr_text)
+        r_element.append(fld_char_end)
+
+
+    def create_doc_lpwgs(self, sample: str, dzm: bool=True, lpwgs_variants: list | None = None) -> Document:
+        """
+        Template for 10x Case
+        """
+        sample_data = self.data[sample]
+        case_table_data = [(sample_data[key] for key in ['Номер образца', 'Пол пациента', 'Предварительный диагноз'])]
+        CNV_table_data = []
+        MT_table_data = []
+        
+        lpwgs_variants = lpwgs_variants if lpwgs_variants is not None else self.get_lpwgs_table_data(sample)
+        main_table_data = self.form_table_data(lpwgs_variants, self.main_table_header_10x)
+
+        tech_table_data_10x = [(sample_data[key] for key in [
+            'Метод исследования',
+            'Тип библиотеки',
+            'Средняя глубина прочтения генома после секвенирования',
+            'Тип прочтения',
+            'Длина прочтения',
+            'Качество выходных данных секвенирования',
+            'Возможные технические/биологические ограничения метода',
+        ])]
+
+        doc = Document()
+        
+        doc.add_heading('ТЕХНИЧЕСКОЕ ЗАКЛЮЧЕНИЕ', level=1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_paragraph('по результатам биоинформатического анализа\nданных полногеномного секвенирования ДНК\n').alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        self.add_table(doc, case_table_data, self.case_table_header_10x, transpose=True, bold=True)
+
+        h = doc.add_heading('РЕЗУЛЬТАТЫ ИССЛЕДОВАНИЯ', level=1)
+        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h.paragraph_format.space_after = Pt(12)
+
+        self.add_table(doc, main_table_data, self.main_table_header_10x)
+
+        p = doc.add_paragraph("Структурные генетические варианты")
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
+        self.add_table(doc, CNV_table_data, self.CNV_table_header)
+
+        p = doc.add_paragraph("Варианты в митохондриальной ДНК")
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(12)
+        p.runs[0].bold = True
+        self.add_table(doc, MT_table_data, self.MT_table_header)
+
+        h = doc.add_heading("СВЕДЕНИЯ О КАЧЕСТВЕ ИССЛЕДОВАНИЯ")
+        h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        h.paragraph_format.space_after = Pt(12)
+        self.add_table(doc, tech_table_data_10x, self.tech_table_header_10x, transpose=True)
+
+        self.add_footer_pages(doc, sample)
+
+        return doc
+
+
+    def lpwgs_row(self, tv: dict, raw: dict | None, sample: str) -> dict:
+        """Одна строка LPWGS"""
+        ref = tv.get('extra_vcf_info__ref', '') or ''
+        alt = tv.get('extra_vcf_info__alt', '') or ''
+        gene = tv.get('Ген', '')
+        hgvsg = tv.get('HGVSg', '')
+        filtered = self.filter_variants([raw], by_sample=sample) if raw else []
+        if filtered:
+            v = self.process_variants_data(filtered)[0]
+            cover_msg = v['Кол-во прочтений (АЛТ/ОБЩ)']
+            genotype = f'{ref}/{alt}'
+        else:
+            genotype = f'{ref}/{ref}'
+            cover_msg = '0x/-'
+        return {
+            'Ген': gene,
+            'HGVSg': hgvsg,
+            'Генотип': genotype,
+            'Качество определения альтернативного аллеля (QUAL)': '',
+            'Количество молекул в позиции (альтернатиный/общий)': cover_msg,
+            'Интерпретация': '',
+        }
+
+    def variant_key(self, v: dict) -> tuple:
+        return (
+            str(v.get('base__chrom', '')),
+            str(v.get('extra_vcf_info__pos', '')),
+            str(v.get('extra_vcf_info__ref', '')),
+            str(v.get('extra_vcf_info__alt', '')),
+        )
+
+    def get_lpwgs_table_data(self, sample: str) -> list:
+        """
+        Варианты целевого (notes 1,2,3)
+        """
+        target_variants = sum(
+            [self.filter_variants(self.data[self.target_sample]['variants_data'], by_note=note) for note in ['1', '2', '3']],
+            []
+        )
+        raw_variants = self.get_variants_data()
+        raw_by_key = {self.variant_key(v): v for v in raw_variants}
+        return [self.lpwgs_row(tv, raw_by_key.get(self.variant_key(tv)), sample) for tv in target_variants]
 
 
     def filter_variants(self, variants_data: list, by_note: str | None = None, by_sample: str | None = None) -> list:
@@ -408,22 +613,29 @@ class ClinReport:
         return variants_data_filtered
 
 
+    def form_table_data(self, variants_data: list, keys: tuple) -> list:
+        """Список dict список tuple по keys."""
+        return [tuple(v[key] for key in keys) for v in variants_data]
+
+
     def form_snv_table_data(self, variants_data: list, pathogenicity_col=False) -> list:
         keys = self.C_table_header if pathogenicity_col else self.SNV_table_header
         snv_table_data = [tuple(variant_data[key] for key in keys) for variant_data in variants_data]
-        return snv_table_data
+        return snv_table_data 
 
 
-    def add_table(self, document: Document, table_data: list, table_header: tuple, italic: bool=False, transpose: bool=False) -> None:
+    def add_table(self, document: Document, table_data: list, table_header: tuple, italic: bool=False, bold: bool=False, transpose: bool=False) -> None:
         table_data.insert(0, table_header)
         if transpose:
             table_data = list(zip(*table_data))
         table = document.add_table(rows=len(table_data), cols=len(table_data[0]))
         for i in range(len(table_data)):
             for j in range(len(table_data[0])):
-                cell_paragraph_run = table.rows[i].cells[j].add_paragraph().add_run(str(table_data[i][j]))
+                cell_paragraph_run = table.rows[i].cells[j].paragraphs[0].add_run(str(table_data[i][j]))
                 if italic and i > 0 and j == 0:
                     cell_paragraph_run.italic = True
+                if bold and ((not transpose and i == 0) or (transpose and j == 0)):
+                    cell_paragraph_run.bold = True
         if len(table_data) == 1:
             table.add_row()
             table.cell(i+1, 0).merge(table.cell(i+1, j))
@@ -541,6 +753,49 @@ class ClinReport:
         return gnomad4aggregated
 
 
+    # Case 10x
+    case_table_header_10x = (
+        'Лабораторный номер',
+        'Пол',
+        'Направительный диагноз ребенка',
+    )
+
+    main_table_header_10x = (
+        'Ген',
+        'HGVSg',
+        'Генотип',
+        'Качество определения альтернативного аллеля (QUAL)',
+        'Количество молекул в позиции (альтернатиный/общий)',
+        'Интерпретация',
+    )
+
+    SNV_table_header_10x = (
+        'Ген',
+        'Ассоциированное заболевание (OMIM)',
+        'Затронутые гены',
+        'Число копий',
+        'Классификация'
+    )
+
+    MT_table_header_10x = (
+        'Ген',
+        'Ассоциированное заболевание (OMIM)',
+        'Изменение ДНК',
+        'Классификация',
+    )
+
+    tech_table_header_10x = (
+        'Метод исследования',
+        'Тип библиотеки',
+        'Средняя глубина прочтения генома после секвенирования',
+        'Тип прочтения',
+        'Длина прочтения',
+        'Качество выходных данных секвенирования',
+        'Возможные технические/биологические ограничения метода',       
+    )
+
+    # Default Case
+
     note2clinsig = {
         '1': 'патогенный',
         '2': 'вероятно патогенный',
@@ -620,8 +875,8 @@ class ClinReport:
         'Ассоциированное заболевание (OMIM)',
         'Изменение ДНК (HG38) (Изменение белка)',
         'Зиготность (Тип наследования)',
-        'Патогенность',
         'Частота*',
+        'Патогенность',
         'Кол-во прочтений (АЛТ/ОБЩ)'
     )
     sources = [
@@ -642,8 +897,9 @@ if __name__ == '__main__':
     argparser = argparse.ArgumentParser(description='Generate report(s) from GenLab OpenCRAVAT SQLite')
     argparser.add_argument('sqlite', type=str, help='Path to OpenCRAVAT SQLite')
     argparser.add_argument('-t', '--target-sample', type=str, help='Main sample in duo/trio')
+    argparser.add_argument('-r', '--report', choices=('default', '10x'), default='default', help='Select report template to use',)
     args = argparser.parse_args()
-    reports = ClinReport(args.sqlite, args.target_sample).generate_reports()
+    reports = ClinReport(args.sqlite, args.target_sample, report_type=args.report).generate_reports()
     for sample, doc in reports.items():
         output_fpath = input(f'Save {sample} document as ... ')
         doc.save(output_fpath)
