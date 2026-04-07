@@ -53,4 +53,11 @@ python3
 
 ### How to crate Windows/MacOS application
 
-`pyinstaller --onefile --windowed --add-data "clinreport_config.json:." --name clinreport app.py`
+`pyinstaller --windowed --add-data "config.json:." --collect-all docx --name clinreport --noconfirm app.py`
+
+
+### Tips
+
+In order to handle MacOS errors such as “the application is damaged” or “cannot be opened,” use the following command:
+
+`xattr -cr /PATH/TO/clinreport.app`
