@@ -4,8 +4,6 @@ from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.enum.table import WD_TABLE_ALIGNMENT
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
 from datetime import date
 from math import log, floor
 import argparse
@@ -455,42 +453,6 @@ class ClinReport:
         return doc
 
 
-    def add_footer_pages(self, doc: Document, sample: str) -> None:
-        """
-        Добавляет футер sample и "Страница X из Y".
-        """
-        section = doc.sections[0]
-        right_edge = section.page_width - section.left_margin - section.right_margin
-
-        footer_para = section.footer.paragraphs[0]
-        footer_para.clear()
-        footer_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-        footer_para.paragraph_format.tab_stops.add_tab_stop(right_edge, alignment=WD_TAB_ALIGNMENT.RIGHT)
-
-        footer_para.add_run(str(sample))
-        footer_para.add_run("\t\t")
-        footer_para.add_run("Страница ")
-        run = footer_para.add_run()
-        self._add_field(run._r, "PAGE")
-        footer_para.add_run(" из ")
-        run = footer_para.add_run()
-        self._add_field(run._r, "NUMPAGES")
-
-
-    def _add_field(self, r_element, field_code: str) -> None:
-        """Добавляет поле (PAGE, NUMPAGES и т.д.) в run element."""
-        fld_char_begin = OxmlElement("w:fldChar")
-        fld_char_begin.set(qn("w:fldCharType"), "begin")
-        instr_text = OxmlElement("w:instrText")
-        instr_text.set(qn("xml:space"), "preserve")
-        instr_text.text = field_code
-        fld_char_end = OxmlElement("w:fldChar")
-        fld_char_end.set(qn("w:fldCharType"), "end")
-        r_element.append(fld_char_begin)
-        r_element.append(instr_text)
-        r_element.append(fld_char_end)
-
-
     def create_doc_lpwgs(self, sample: str, dzm: bool=True, lpwgs_variants: list | None = None) -> Document:
         """
         Template for 10x Case
@@ -542,8 +504,6 @@ class ClinReport:
         h.alignment = WD_ALIGN_PARAGRAPH.CENTER
         h.paragraph_format.space_after = Pt(12)
         self.add_table(doc, tech_table_data_10x, self.tech_table_header_10x, transpose=True)
-
-        self.add_footer_pages(doc, sample)
 
         return doc
 
