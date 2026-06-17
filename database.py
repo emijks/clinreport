@@ -54,13 +54,6 @@ class Database:
 
 
 class VariantSource:
-    """Reads variants from a per-run OpenCRAVAT SQLite.
-
-    Produces new-schema variant dicts regardless of whether the SQLite is the
-    current or the legacy schema (legacy is bridged to the new column names).
-    This is the *input* data source -- distinct from `Database` above, which is
-    the *output* Postgres archive.
-    """
 
     inheritance_map = {
         'Autosomal dominant': 'AD',
@@ -94,10 +87,6 @@ class VariantSource:
                 variants = [dict(zip(variant_cols, row)) for row in rows]
         return variants
 
-    # --- legacy-schema bridge (faithful port from clinreport_old.py; B5 keep) ---
-    # NOTE: `annotation` is assigned inside the CSQ_PICK loop and read after it;
-    # ported as-is from the old untested legacy path. Revisit if legacy SQLites
-    # ever flow through the new render path.
     def _annotate_legacy(self, variant_data: dict) -> dict:
         extra_vcf_info = self._extra_vcf_info(variant_data)
         for i in range(extra_vcf_info['nblocks']):

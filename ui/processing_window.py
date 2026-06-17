@@ -18,7 +18,11 @@ class ProcessingWindow(tk.Toplevel):
         self.text = tk.Label(self, text="Целевой образец:")
         self.text.pack(pady=10)
 
-        self.clinreport = ClinReport(filepath)
+        self.clinreport = ClinReport(
+            filepath,
+            clinician=self.master.config.get('clinician', ''),
+            ru_annotations=getattr(self.master, 'ru_annotations', None),
+        )
 
         self.target_sample = ttk.Combobox(self, values=self.clinreport.all_samples, width=30, state='readonly')
         self.target_sample.current(0)
@@ -32,13 +36,11 @@ class ProcessingWindow(tk.Toplevel):
 
 
     def confirm_selection(self):
-        """Подтверждает выбор типа обработки и вызывает callback."""
-        selected_type = self.target_sample.get()
-        self.process_file_callback(self.filepath, selected_type)  # Передаем имя файла и выбранный тип
+        """Подтверждает выбор целевого образца и запускает стандартную обработку."""
+        self.process_file_callback(self.clinreport, self.target_sample.get())
         self.destroy()
 
     def confirm_selection_lpwgs(self):
-        """Подтверждает выбор и вызывает LPWGS callback."""
-        selected_type = self.target_sample.get()
-        self.process_file_lpwgs_callback(self.filepath, selected_type)
+        """Подтверждает выбор и запускает обработку LPWGS."""
+        self.process_file_lpwgs_callback(self.clinreport, self.target_sample.get())
         self.destroy()

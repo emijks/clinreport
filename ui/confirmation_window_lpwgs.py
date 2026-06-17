@@ -1,15 +1,24 @@
+import traceback
 import tkinter as tk
-from tkinter import ttk, messagebox, CENTER, filedialog
+from tkinter import ttk, messagebox, filedialog
 
 from ui.table_view import Tableview
+from ui import labels
+
 
 class ConfirmationWindowLPWGS(tk.Toplevel):
-    """Окно подтверждения для нецелевого образца в режиме LPWGS (технический документ 10x, без выгрузки в БД)."""
+    """Окно подтверждения для нецелевого образца в режиме LPWGS.
 
-    def __init__(self, master, sample: str):
+    Технический документ 10x: общая таблица + основная таблица вариантов,
+    без выбора шаблона и без выгрузки в БД. Работает с context-словарём
+    (build_context(sample, '10x')); документ формируется через render(context, '10x').
+    """
+
+    def __init__(self, master, sample, context: dict):
         super().__init__(master)
         self.clinreport = self.master.clinreport
         self.sample = sample
+        self.context = context
         self.title(f"Образец {self.sample} (LPWGS)")
         self.geometry("850x650")
         self.style = ttk.Style(self)
@@ -17,30 +26,23 @@ class ConfirmationWindowLPWGS(tk.Toplevel):
 
         self.actions_frame = ttk.Frame(self)
         self.actions_frame.pack(pady=8)
-
         self.save_button = tk.Button(self.actions_frame, text="Сохранить как ...", command=self.save_docx_lpwgs)
         self.save_button.pack(side="left", padx=6)
-
         self.close_button = tk.Button(self.actions_frame, text="Закрыть", command=self.close)
         self.close_button.pack(side="left", padx=6)
 
         self.container = ttk.Frame(self)
         self.container.pack(fill='both', expand=True)
-
         self.canvas = tk.Canvas(self.container)
         self.canvas.pack(side='left', fill='both', expand=True)
-
         self.scrollbar = ttk.Scrollbar(self.container, orient='vertical', command=self.canvas.yview)
         self.scrollbar.pack(side='right', fill='y')
-
         self.scrollable_frame = ttk.Frame(self.canvas)
         self.scrollable_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
-
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
         self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor='nw')
 
-        self.pack_tableviews_lpwgs()
-
+        self.pack_tableviews()
         self.bind_mousewheel_recursively(self.scrollable_frame)
 
     def bind_mousewheel_recursively(self, widget):
@@ -50,62 +52,50 @@ class ConfirmationWindowLPWGS(tk.Toplevel):
 
     def _on_mousewheel(self, event):
         if event.delta:
-            self.canvas.yview_scroll(int(-1 * (event.delta)), "units")
+            self.canvas.yview_scroll(int(-1 * event.delta), "units")
 
-    def pack_tableviews_lpwgs(self) -> None:
-        # 10x case header (display labels -> data keys)
-        self.case_header_map = {
-            'Лабораторный номер': 'Номер образца',
-            'Пол': 'Пол пациента',
-            'Направительный диагноз ребенка': 'Предварительный диагноз',
-        }
-        common_columns = list(self.case_header_map.keys())
-        common_values = [[self.clinreport.data[self.sample][self.case_header_map[col]] for col in common_columns]]
-        container = ttk.Frame(self.scrollable_frame)
-        container.pack(fill='x', pady=5, padx=10)
-        self.common_columns = common_columns
-        self.common_tableview = Tableview(container, columns=common_columns, show="headings")
-        for col in common_columns:
-            self.common_tableview.heading(col, text=col)
-            self.common_tableview.column(col, width=100, anchor='w')
-        for row in common_values:
-            self.common_tableview.insert("", tk.END, values=row)
-        self.common_tableview.pack(side='left', fill='x', expand=True)
+    def pack_tableviews(self) -> None:
+        common_labels = [label for _, _, label in labels.TEN_X_COMMON_FIELDS]
+        common = labels.common_values(self.context, labels.TEN_X_COMMON_FIELDS)
+        self.common_tableview = self._pack_table(common_labels, common)
 
-        self.lpwgs_columns = list(self.clinreport.main_table_header_10x)
-        self.lpwgs_rows = self.clinreport.get_lpwgs_table_data(self.sample)
-        lpwgs_values = [[r[col] for col in self.lpwgs_columns] for r in self.lpwgs_rows]
-        lp_frame = ttk.Frame(self.scrollable_frame)
-        lp_frame.pack(pady=10, padx=10, fill="both", expand=True)
-        self.lpwgs_tableview = Tableview(lp_frame, columns=self.lpwgs_columns, show="headings")
-        for col in self.lpwgs_columns:
-            self.lpwgs_tableview.heading(col, text=col)
-            self.lpwgs_tableview.column(col, width=120, anchor='w')
-        for row in lpwgs_values:
-            self.lpwgs_tableview.insert("", tk.END, values=row)
-        self.lpwgs_tableview.config(height=len(lpwgs_values) + 3 if lpwgs_values else 0)
-        self.lpwgs_tableview.pack(side='left', fill='both', expand=True)
+        ttk.Label(self.scrollable_frame, text="Результаты исследования", font=('Helvetica', 10, 'bold')).pack(pady=(10, 0))
+        column_labels = [labels.MAIN_VARIANT_LABELS[field] for field in labels.MAIN_VARIANT_FIELDS]
+        values = labels.variant_rows_to_values(self.context.get('main_variants', []), labels.MAIN_VARIANT_FIELDS)
+        self.main_tableview = self._pack_table(column_labels, values)
 
-    def get_tableview_changes(self, tableview) -> list:
-        tableview_changes = []
-        for item in tableview.get_children():
-            values = tableview.item(item, 'values')
-            tableview_changes.append(dict(zip(tableview['columns'], values)))
-        return tableview_changes
+    def _pack_table(self, columns, values) -> Tableview:
+        frame = ttk.Frame(self.scrollable_frame)
+        frame.pack(pady=5, padx=10, fill="both", expand=True)
+        tableview = Tableview(frame, columns=columns, show="headings")
+        for col in columns:
+            tableview.heading(col, text=col)
+            tableview.column(col, width=120, anchor='w')
+        for row in values:
+            tableview.insert("", tk.END, values=row)
+        tableview.config(height=len(values) + 1 if values else 1)
+        tableview.pack(side="left", fill="both", expand=True)
+        return tableview
 
-    def save_tableviews_changes_lpwgs(self) -> None:
-        if hasattr(self, "common_tableview"):
-            common_changes = self.get_tableview_changes(self.common_tableview)
-            if common_changes:
-                for display_key, value in common_changes[0].items():
-                    data_key = self.case_header_map.get(display_key, display_key)
-                    self.clinreport.data[self.sample][data_key] = value
-        if hasattr(self, "lpwgs_tableview"):
-            self.lpwgs_rows = self.get_tableview_changes(self.lpwgs_tableview)
+    def _tableview_values(self, tableview) -> list:
+        return [list(tableview.item(item, 'values')) for item in tableview.get_children()]
+
+    def save_tableviews_changes(self) -> None:
+        common = self._tableview_values(self.common_tableview)
+        if common:
+            labels.apply_common_edits(self.context, common[0], labels.TEN_X_COMMON_FIELDS)
+        labels.apply_variant_edits(
+            self.context['main_variants'], labels.MAIN_VARIANT_FIELDS, self._tableview_values(self.main_tableview)
+        )
 
     def save_docx_lpwgs(self) -> None:
-        self.save_tableviews_changes_lpwgs()
-        self.doc = self.clinreport.create_doc_lpwgs(self.sample, lpwgs_variants=getattr(self, "lpwgs_rows", None))
+        self.save_tableviews_changes()
+        try:
+            self.doc = self.clinreport.render(self.context, '10x')
+        except Exception:
+            messagebox.showerror("Ошибка", f"Ошибка при формировании документа: {traceback.format_exc()}", parent=self)
+            return
+
         self.lift()
         try:
             self.attributes("-topmost", True)
@@ -117,7 +107,7 @@ class ConfirmationWindowLPWGS(tk.Toplevel):
             title='Сохранить как ...',
             defaultextension=".docx",
             filetypes=[("DOCX files", "*.docx")],
-            initialfile=f'Заключение LPWGS ({str(self.sample).split(".")[0]}).docx'
+            initialfile=f'Заключение LPWGS ({str(self.sample).split(".")[0]}).docx',
         )
         try:
             self.attributes("-topmost", False)
