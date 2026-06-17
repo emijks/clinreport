@@ -69,7 +69,7 @@ class SampleProcessor:
         self.sample_name = str(sample_id).split('.')[0]
         self.target_sample = target_sample or sample_id
         self.all_samples = all_samples or [sample_id]
-        self.clinician = clinician or 'Не указан'
+        self.clinician = clinician or ''
         self.ru_annotations = ru_annotations
 
 
