@@ -51,14 +51,14 @@ class ClinReport:
         self.source = source if isinstance(source, VariantSource) else VariantSource(source)
         self.clinician = clinician
         self.ru_annotations = ru_annotations
-        self.all_samples = self.source.all_samples()
+        self.all_samples = self.source.get_all_samples()
         self.target_sample = target_sample or self.all_samples[0]
         self._raw_variants = None
 
     @property
     def raw_variants(self) -> list:
         if self._raw_variants is None:
-            self._raw_variants = self.source.variants()
+            self._raw_variants = self.source.get_variants()
         return self._raw_variants
 
     def processor_for(self, sample) -> SampleProcessor:

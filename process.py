@@ -210,7 +210,7 @@ class SampleProcessor:
 
 
     # gene is a separate field so the template tag {{ v.gene }} can be italic.
-    INTERPRETATION_NOTES = ('1', '2', '3')
+    INTERPRETATION_NOTES = ('1', '2', '3', '7')
 
     def _build_interpretation(self, sample_variants: list) -> tuple[list, str]:
         narrated = [

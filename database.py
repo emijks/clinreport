@@ -65,12 +65,12 @@ class VariantSource:
     def __init__(self, sqlite_path: str):
         self.sqlite_path = sqlite_path
 
-    def all_samples(self) -> list:
+    def get_all_samples(self) -> list:
         with sqlite3.connect(self.sqlite_path) as con:
             cur = con.cursor()
             return [row[0] for row in cur.execute('select distinct base__sample_id from sample;').fetchall()]
 
-    def variants(self) -> list[dict]:
+    def get_variants(self) -> list[dict]:
         """Fetch annotated variants; bridge legacy schema to the new column names."""
         with sqlite3.connect(self.sqlite_path) as con:
             cur = con.cursor()
