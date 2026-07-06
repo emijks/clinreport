@@ -2,6 +2,8 @@ import traceback
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 
+import pandas as pd
+
 from ui.table_view import Tableview
 from ui import labels
 
@@ -144,18 +146,60 @@ class ConfirmationWindow(tk.Toplevel):
         if filepath:
             try:
                 self.doc.save(filepath)
-                # NOTE: DB auto-upload returns in step 3c.
-                messagebox.showinfo("Успешно", "Документ сохранен", parent=self)
+                if self.master.config.get('auto_upload', True) and self.insert_to_db():
+                    messagebox.showinfo("Успешно", "Документ сохранен и данные выгружены в БД", parent=self)
+                else:
+                    messagebox.showinfo("Успешно", "Документ сохранен", parent=self)
             except Exception as e:
                 messagebox.showerror("Ошибка", f"Ошибка при сохранении документа: {repr(e)}", parent=self)
 
-    def insert_to_db(self) -> None:
-        # DB upload is rewired in step 3c (payload built from the new context dict).
-        messagebox.showinfo("В разработке", "Выгрузка в базу будет доступна после шага 3c.", parent=self)
+    def insert_to_db(self) -> bool:
+        """Upload this sample's variants to Postgres. Returns True on a successful insert."""
+        database = getattr(self.master, 'database', None)
+        if database is None:
+            messagebox.showwarning("База недоступна", "Нет подключения к базе данных.", parent=self)
+            return False
+        try:
+            self.save_tableviews_changes()
+            sample_name = str(self.sample).split('.')[0]
+            if database.sample_data_exists(sample_name):
+                if not messagebox.askyesno(
+                    "Найден дубликат образца",
+                    f'Для образца "{sample_name}" уже есть записи в БД. Записать ещё?',
+                    parent=self,
+                ):
+                    return False
+            payload = pd.DataFrame(labels.context_to_payload_records(self.context))
+            database.insert(payload)
+            messagebox.showinfo("Успешно", f"{len(payload)} вариант(ов) успешно выгружены", parent=self)
+            return True
+        except Exception:
+            messagebox.showerror("Ошибка", f"Ошибка при выгрузке данных: {traceback.format_exc()}", parent=self)
+            return False
 
     def show_similar_variants(self, variant) -> None:
-        # Similar-variants DB lookup is rewired in step 3c.
-        messagebox.showinfo("В разработке", "Поиск похожих вариантов будет доступен после шага 3c.", parent=self)
+        """Показывает похожие ранее выгруженные варианты из БД."""
+        database = getattr(self.master, 'database', None)
+        if database is None:
+            messagebox.showwarning("База недоступна", "Нет подключения к базе данных.", parent=self)
+            return
+        try:
+            similar_variants = database.get_similar_variants(variant)
+        except Exception:
+            messagebox.showerror("Ошибка", f"Не удалось получить данные: {traceback.format_exc()}", parent=self)
+            return
+
+        similar_window = tk.Toplevel(self)
+        similar_window.title(f"Похожие варианты для {variant.get('gene', '')}")
+        similar_window.geometry("800x400")
+        columns = ['Номер образца', 'Патогенность', 'Клиницист', 'Дата заключения']
+        tree = ttk.Treeview(similar_window, columns=columns, show="headings")
+        for col in columns:
+            tree.heading(col, text=col)
+            tree.column(col, width=180)
+        for row in similar_variants:
+            tree.insert("", tk.END, values=tuple(row.get(col, '') for col in columns))
+        tree.pack(fill="both", expand=True)
 
     def close(self) -> None:
         self.destroy()
