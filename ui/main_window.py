@@ -17,7 +17,7 @@ class MainWindow(tk.Tk):
 
     def __init__(self):
         super().__init__()
-        self.title("ClinReport v2.2 (beta)")
+        self.title("ClinReport v2.2")
         self.geometry("400x200")  # Установите желаемый размер
 
         self.select_file_button = tk.Button(self, text="Выбрать файл", command=self.select_file)
@@ -42,6 +42,9 @@ class MainWindow(tk.Tk):
 
     def setup_database(self):
         self.database = None
+        required_keys = ('user', 'pass', 'host', 'port', 'name')
+        if not all(self.config.get(key) for key in required_keys):
+            return
         try:
             self.database = Database(db_creds=self.config)
         except Exception as e:
