@@ -2,8 +2,18 @@ from sqlalchemy import create_engine
 from urllib.parse import quote
 from contextlib import contextmanager
 import sqlite3
+import socket
 import pandas as pd
 import json
+
+
+def get_ru_annotations(timeout: int = 10) -> dict:
+    socket.setdefaulttimeout(timeout)
+    url = 'https://docs.google.com/spreadsheets/d/1Zj_Gw-TolcoKljqfk4eCrQ1hyhlZDs44UOZbFTVTfes'
+    return {
+        'omim': pd.read_csv(f'{url}/export?format=csv&gid=0', index_col=0).to_dict(),
+        'secondary': pd.read_csv(f'{url}/export?format=csv&gid=706494431', index_col=0).to_dict(),
+    }
 
 class Database:
 
@@ -40,8 +50,8 @@ class Database:
         return bool(len(sample_data))
 
     def get_similar_variants(self, variant_data):
-            """Запрос к БД для получения похожих вариантов"""
-            dna_change = variant_data['Изменение ДНК (HG38) (Изменение белка)'].split('\n')[0]
+            """Запрос к БД для получения похожих вариантов (variant_data — строка context)."""
+            dna_change = variant_data['variation'].split('\n')[0]
             with self.conn() as conn:
                 query = f"""
                     SELECT 

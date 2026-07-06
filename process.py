@@ -73,7 +73,7 @@ class SampleProcessor:
         self.ru_annotations = ru_annotations
 
 
-    def filter_variants(self, variants_data: list, by_note: str | None = None, by_sample: str | None = None) -> list:
+    def filter_variants(self, variants_data: list, by_note: str | None = None, by_sample: str | None = None, allow_low_quality: bool=True) -> list:
         variants_data = variants_data.copy()
         if by_note:
             variants_data = [v for v in variants_data if v['base__note'] == by_note]
@@ -84,7 +84,7 @@ class SampleProcessor:
                 samples = variant_copy['tagsampler_new__samples'].split(';')
                 if by_sample in samples:
                     idx = samples.index(by_sample)
-                    if variant_copy['tagsampler_new__filter'].split(';')[idx] != 'PASS':
+                    if (variant_copy['tagsampler_new__filter'].split(';')[idx] != 'PASS') and not allow_low_quality:
                         continue
                     variant_copy['tagsampler_new__zygosity'] = variant_copy['tagsampler_new__zygosity'].split(';')[idx]
                     variant_copy['tagsampler_new__ad'] = variant_copy['tagsampler_new__ad'].split(';')[idx].split(',')[-1]
@@ -177,12 +177,6 @@ class SampleProcessor:
             else:
                 omim_pheno = self.ru_annotations.get('omim', {}).get('Ассоциированное заболевание', {}).get(symbol, omim_pheno)
 
-        pathogenicity = (
-            self.note2clinsig[note].capitalize()
-            if note in ('1', '2', '3')
-            else self.clinsig2msg.get(variant['clinvar_new__sig'], '-')
-        )
-
         return {
             'gene': symbol,
             'disease': omim_pheno or '',
@@ -190,15 +184,22 @@ class SampleProcessor:
             'zygosity': self._zygosity_str(zygosity_msg, inher_msg),
             'frequency': af_msg,
             'coverage': coverage,
-            'pathogenicity': pathogenicity,
+            'pathogenicity': self._classification_msg(variant),
+            # payload-only carriers (not shown in GUI tables / templates)
+            'type': self.note2type.get(note, ''),
+            'manual_criteria': '',
         }
 
-    def _classification_msg(self, variant: dict) -> str:
-        """Pathogenicity text shared by CNV/MT/STR rows."""
+    def _clinsig_text(self, variant: dict) -> str:
         note = variant.get('base__note')
         if note in ('1', '2', '3'):
-            return self.note2clinsig[note].capitalize()
+            return self.note2clinsig[note]
         return self.clinsig2msg.get(variant.get('clinvar_new__sig'), '-')
+
+    def _classification_msg(self, variant: dict) -> str:
+        """Pathogenicity as shown in the variant tables: causative capitalised."""
+        text = self._clinsig_text(variant)
+        return text.capitalize() if variant.get('base__note') in ('1', '2', '3') else text
 
 
     def get_causative_variants(self, sample_variants: list) -> list:
@@ -282,7 +283,7 @@ class SampleProcessor:
         clinvar_msg = self._clinvar_annotation_msg(
             variant['clinvar_new__sig'], variant['clinvar_new__sig_subs']
         )
-        clinsig = self.note2clinsig[variant['base__note']]
+        clinsig = self._clinsig_text(variant)
 
         body = []
         if agg['AN']:

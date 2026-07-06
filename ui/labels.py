@@ -5,6 +5,8 @@ Russian column labels and edits plain strings. These helpers translate between
 the two with no Tk dependency, so they are unit-testable headless.
 """
 
+from datetime import date
+
 FIELD_LABELS = {
     'gene': 'Ген',
     'disease': 'Ассоциированное заболевание (OMIM)',
@@ -12,7 +14,9 @@ FIELD_LABELS = {
     'zygosity': 'Зиготность (Тип наследования)',
     'frequency': 'Частота*',
     'coverage': 'Кол-во прочтений (АЛТ/ОБЩ)',
+    'manual_criteria': 'Ручные критерии',
     'pathogenicity': 'Патогенность',
+    'type': 'Тип',
 }
 LABEL_TO_FIELD = {label: field for field, label in FIELD_LABELS.items()}
 
@@ -75,3 +79,41 @@ def apply_common_edits(context, edited_row, common_fields=COMMON_FIELDS):
     """Write edited common-table values back into the context, in place."""
     for (section, key, _), value in zip(common_fields, edited_row):
         context[section][key] = value
+
+
+# --- Postgres ReportedVariants payload (context dict -> records) ---
+# Patient/common columns pulled from the context (section, key, DB column).
+PAYLOAD_COMMON = (
+    ('patient', 'id', 'Номер образца'),
+    ('patient', 'sex', 'Пол пациента'),
+    ('patient', 'age', 'Возраст пациента'),
+    ('patient', 'diagnosis', 'Предварительный диагноз'),
+)
+# Variant columns, in the old payload's order; each maps through FIELD_LABELS.
+PAYLOAD_VARIANT_FIELDS = (
+    'gene', 'disease', 'variation', 'zygosity', 'frequency',
+    'coverage', 'manual_criteria', 'pathogenicity', 'type',
+)
+# Variant sections of a default-report context that get uploaded.
+PAYLOAD_SECTIONS = ('p_variants', 'lp_variants', 'vus_variants', 'sf_variants', 'carrier_variants')
+
+
+def context_to_payload_records(context):
+    """Flatten a default-report context into Postgres ReportedVariants records.
+
+    One record per variant across the uploaded sections, each carrying the shared
+    patient/clinician columns. 'Дата заключения' is ISO (matches the DB column),
+    not the dd.mm.yyyy display date in context['report_date'].
+    """
+    common = {label: context[section][key] for section, key, label in PAYLOAD_COMMON}
+    common['Клиницист'] = context.get('clinician', '')
+    common['Дата заключения'] = date.today().isoformat()
+
+    records = []
+    for section in PAYLOAD_SECTIONS:
+        for row in context.get(section, []):
+            record = dict(common)
+            for field in PAYLOAD_VARIANT_FIELDS:
+                record[FIELD_LABELS[field]] = row.get(field, '')
+            records.append(record)
+    return records

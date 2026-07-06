@@ -3,9 +3,8 @@ from tkinter import ttk, filedialog, messagebox
 import traceback
 
 import config
-from utils import get_ru_annotations
 from clinreport import ClinReport
-from database import Database
+from database import Database, get_ru_annotations
 
 from ui.settings_window import SettingsWindow
 from ui.confirmation_window_lpwgs import ConfirmationWindowLPWGS
