@@ -53,7 +53,7 @@ python3
 
 ### How to crate Windows/MacOS application
 
-`pyinstaller --windowed --add-data "config.json:." --collect-all docx --name clinreport --noconfirm app.py`
+`pyinstaller --windowed --add-data "config.json:." --add-data "templates:templates" --collect-all docx --name clinreport --noconfirm app.py`
 
 
 ### Tips
