@@ -1,0 +1,111 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*.*"
+  workflow_dispatch: 
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            arch_suffix: win-x64
+            data_sep: ";"
+          - os: macos-15-intel
+            arch_suffix: macos-x64
+            data_sep: ":"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Force legacy (non-Accelerate) NumPy wheel on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          pip download --no-deps --only-binary=:all: \
+            --platform macosx_10_13_x86_64 \
+            --python-version 3.13 \
+            --implementation cp \
+            --abi cp313 \
+            -d ./numpy_wheel numpy
+          pip install --force-reinstall --no-deps ./numpy_wheel/*.whl
+
+      - name: Build with PyInstaller
+        shell: bash
+        run: >
+          pyinstaller --windowed
+          --add-data "config.json${{ matrix.data_sep }}."
+          --add-data "templates${{ matrix.data_sep }}templates"
+          --collect-all docx
+          --name clinreport
+          --noconfirm
+          app.py
+
+      - name: Set artifact name
+        shell: bash
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="manual-${{ github.run_number }}"
+          fi
+          echo "ARTIFACT_NAME=clinreport-${VERSION}-${{ matrix.arch_suffix }}" >> "$GITHUB_ENV"
+
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/clinreport -DestinationPath dist/${{ env.ARTIFACT_NAME }}.zip
+
+      - name: Package artifact (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd dist
+          ditto -c -k --sequesterRsrc --keepParent clinreport.app ${{ env.ARTIFACT_NAME }}.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: dist/${{ env.ARTIFACT_NAME }}.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "ClinReport ${{ github.ref_name }}"
+          generate_release_notes: false
+          draft: false
+          files: |
+            artifacts/*/*.zip
