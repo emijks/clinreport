@@ -39,6 +39,18 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
+      - name: Force legacy (non-Accelerate) NumPy wheel on macOS
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          pip download --no-deps --only-binary=:all: \
+            --platform macosx_10_13_x86_64 \
+            --python-version 3.13 \
+            --implementation cp \
+            --abi cp313 \
+            -d ./numpy_wheel numpy
+          pip install --force-reinstall --no-deps ./numpy_wheel/*.whl
+
       - name: Build with PyInstaller
         shell: bash
         run: >
@@ -92,6 +104,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: "ClinReport ${{ github.ref_name }}"
           generate_release_notes: true
           draft: false
           files: |
