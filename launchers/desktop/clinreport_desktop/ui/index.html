@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClinReport</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="shell">
+  <nav class="side" role="tablist" aria-label="Разделы">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M7 2h13l7 7v19a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" fill="var(--accent)"/>
+        <path d="M20 2l7 7h-5a2 2 0 0 1-2-2z" fill="var(--accent-soft)"/>
+        <rect x="9" y="14" width="14" height="2.4" rx="1.2" fill="var(--surface)"/>
+        <rect x="9" y="19" width="14" height="2.4" rx="1.2" fill="var(--surface)"/>
+        <rect x="9" y="24" width="9" height="2.4" rx="1.2" fill="var(--surface)"/>
+      </svg>
+      <div><b>ClinReport</b><span id="brand-version"></span></div>
+    </div>
+    <div class="status-mini"><span class="dot" id="mini-dot"></span><span id="mini-state">Запуск…</span></div>
+    <button class="tab" role="tab" id="tab-overview" aria-controls="p-overview" aria-selected="true">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>
+      Обзор</button>
+    <button class="tab" role="tab" id="tab-templates" aria-controls="p-templates" aria-selected="false">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13M6 8h5M6 10.5h5M6 13h3"/></svg>
+      Шаблоны <span class="count" id="tpl-count"></span></button>
+    <button class="tab" role="tab" id="tab-settings" aria-controls="p-settings" aria-selected="false">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h7M12 4h2M2 8h2M7 8h7M2 12h9"/><circle cx="10.5" cy="4" r="1.5"/><circle cx="5.5" cy="8" r="1.5"/><circle cx="12.5" cy="12" r="1.5"/></svg>
+      Настройки</button>
+    <button class="tab" role="tab" id="tab-log" aria-controls="p-log" aria-selected="false">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M4.5 6l2 2-2 2M8 10.5h3.5"/></svg>
+      Журнал <span class="count" id="log-count"></span></button>
+    <div class="foot" id="foot"></div>
+  </nav>
+
+  <main>
+    <div id="notices" class="notices" aria-live="polite"></div>
+
+    <!-- ============ OVERVIEW ============ -->
+    <section role="tabpanel" id="p-overview" aria-labelledby="tab-overview">
+      <div class="card hero">
+        <div class="hero-text">
+          <div class="state"><span class="dot" id="hero-dot"></span><span id="hero-state">Запуск OpenCRAVAT…</span></div>
+          <div class="meta" id="hero-meta"></div>
+        </div>
+        <div class="actions">
+          <button class="btn primary" type="button" id="open-result">Открыть результат…</button>
+          <button class="btn" type="button" id="open-oc">Открыть OpenCRAVAT</button>
+          <button class="btn ghost danger" type="button" id="toggle-server">Остановить</button>
+        </div>
+        <div class="hero-error" id="hero-error" hidden></div>
+      </div>
+
+      <div class="card">
+        <h3>Недавние результаты</h3>
+        <div class="list" id="recent"></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>Компоненты</h3>
+          <dl class="kv" id="components"></dl>
+        </div>
+        <div class="card">
+          <h3>Проверки</h3>
+          <dl class="kv" id="checks"></dl>
+        </div>
+      </div>
+
+      <div class="notes" aria-label="Коды в колонке Note">
+        Коды в колонке Note:
+        <span class="note-code"><b>1</b><span>Патогенный</span></span>
+        <span class="note-code"><b>2</b><span>Вероятно патогенный</span></span>
+        <span class="note-code"><b>3</b><span>ВНЗ</span></span>
+        <span class="note-code"><b>7</b><span>Не связан с диагнозом</span></span>
+        <span class="note-code"><b>8</b><span>Носительство</span></span>
+      </div>
+    </section>
+
+    <!-- ============ TEMPLATES ============ -->
+    <section role="tabpanel" id="p-templates" aria-labelledby="tab-templates" hidden>
+      <div>
+        <h2>Шаблоны заключений</h2>
+        <p class="hint">Шаблон — документ Word с полями вида <span class="mono">{{ patient.id }}</span>. Начните с образца
+          и сверяйтесь со списком полей. Свои шаблоны хранятся в папке данных и не пропадают при обновлении;
+          они же видны в окне заключения в браузере.</p>
+      </div>
+      <div class="row">
+        <button class="btn primary" type="button" id="add-tpl">Добавить шаблон…</button>
+        <button class="btn" type="button" id="sample-tpl">Сохранить образец…</button>
+        <button class="btn ghost" type="button" id="fields-tpl" aria-expanded="false">Список полей</button>
+        <span class="spacer"></span>
+        <button class="btn ghost" type="button" id="tpl-folder">Папка шаблонов</button>
+      </div>
+      <form class="card add-form" id="add-form" hidden>
+        <h3>Новый шаблон</h3>
+        <div class="fields three">
+          <label class="field">Файл<input type="text" id="add-file" readonly></label>
+          <label class="field">Название<input type="text" id="add-title" required autocomplete="off"></label>
+          <label class="field">Для документа<select id="add-kind"></select></label>
+        </div>
+        <div class="row end">
+          <button class="btn ghost" type="button" id="add-cancel">Отмена</button>
+          <button class="btn primary" type="submit" id="add-submit">Добавить</button>
+        </div>
+      </form>
+      <div class="card" id="fields-box" hidden></div>
+      <div class="card"><div class="list" id="tpl-list"></div></div>
+    </section>
+
+    <!-- ============ SETTINGS ============ -->
+    <section role="tabpanel" id="p-settings" aria-labelledby="tab-settings" hidden>
+      <form class="settings" id="settings-form">
+        <div class="card">
+          <h3>Заключение</h3>
+          <p class="hint" style="margin:0 0 10px">Это резервная версия ClinReport: документы сохраняются на этом компьютере,
+            выгрузка в базу и отправка в CLINBIO доступны только на сервере GLS.</p>
+          <div class="fields">
+            <label class="field">Клиницист<input type="text" id="s-clinician" autocomplete="off"></label>
+            <label class="field">Шаблон по умолчанию<select id="s-template"></select></label>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Запуск</h3>
+          <div class="stack">
+            <label class="check-line"><input type="checkbox" id="s-browser">
+              <span>Открывать OpenCRAVAT в браузере при запуске</span></label>
+            <label class="check-line"><input type="checkbox" id="s-autostart">
+              <span>Запускать при входе в систему<small>Сервер стартует в фоне, окно свёрнуто</small></span></label>
+            <div class="radio-row" role="radiogroup" aria-label="Порт">
+              <span class="hint">Порт:</span>
+              <label><input type="radio" name="port" id="s-port-auto" value="auto"> автоматически</label>
+              <label><input type="radio" name="port" id="s-port-fixed" value="fixed"> постоянный
+                <input type="number" id="s-port-value" min="1024" max="65535" class="port-input"></label>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Данные и аннотации</h3>
+          <dl class="kv">
+            <dt>Папка данных</dt><dd><span class="mono" id="s-data-dir"></span>
+              <button class="btn sm ghost" type="button" id="open-data">Открыть</button></dd>
+            <dt>Русские аннотации</dt><dd><span id="s-ru"></span>
+              <button class="btn sm ghost" type="button" id="ru-refresh">Обновить сейчас</button></dd>
+          </dl>
+        </div>
+
+        <div class="row end">
+          <button class="btn ghost" type="button" id="settings-reset">Отменить изменения</button>
+          <button class="btn primary" type="submit" id="settings-save">Сохранить</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ============ LOG ============ -->
+    <section role="tabpanel" id="p-log" aria-labelledby="tab-log" hidden>
+      <div class="row">
+        <h2>Журнал</h2><span class="spacer"></span>
+        <button class="btn" type="button" id="open-logs">Папка журналов</button>
+        <button class="btn primary" type="button" id="copy-diag">Скопировать диагностику</button>
+      </div>
+      <p class="hint">Диагностика — версии, настройки без пароля и последние записи журналов. Её удобно отправить разработчикам.</p>
+      <pre class="log" id="log" tabindex="0"></pre>
+      <details class="card server-log">
+        <summary>Вывод сервера OpenCRAVAT</summary>
+        <pre class="log" id="server-log"></pre>
+      </details>
+      <textarea id="diag-text" class="visually-hidden" aria-hidden="true" tabindex="-1"></textarea>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>
