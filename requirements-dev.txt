@@ -1,0 +1,7 @@
+# Development and CI environment (Python 3.13): the desktop app's stack plus test and lint tools.
+open-cravat==3.2.3
+-r packaging/requirements.txt
+
+pytest
+pytest-cov
+ruff

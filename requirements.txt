@@ -1,5 +1,0 @@
-python-docx==1.1.2
-docxtpl==0.20.2
-pandas==2.2.3
-psycopg2-binary==2.9.10
-sqlalchemy==2.0.41

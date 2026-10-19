@@ -1,0 +1,4 @@
+# The OpenCRAVAT modules must stay Python 3.8-compatible (OpenCRAVAT 2.2.9 declares python_requires>=3.8):
+# no py3.9+ rewrites from pyupgrade.
+extend = "../pyproject.toml"
+target-version = "py38"

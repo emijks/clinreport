@@ -1,5 +1,6 @@
 from math import floor, log10
 
+
 def predict_insilico(scsnvada, metarnn, revel, alphamissense, phylop):
     thresholds = {
         'scsnvada': (0.957813, 0.999322, 0.999925),

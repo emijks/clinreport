@@ -1,0 +1,43 @@
+[project]
+name = "clinreport"
+version = "3.0.0"
+description = "Clinical .docx reports from OpenCRAVAT results: OpenCRAVAT extension, desktop app and CLI"
+readme = "README.md"
+requires-python = ">=3.11"
+
+# Not an installable package (yet): the OpenCRAVAT modules are copied by packaging/build.py or the
+# extension installer. Development setup: pip install -r requirements-dev.txt
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [
+    "tests",
+    "modules/webapps/clinreport",
+    "launchers/desktop",
+    "launchers/cli",
+]
+addopts = "-ra --import-mode=importlib"
+
+[tool.coverage.run]
+source = ["clinreport_core", "clinreport_desktop", "cli"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["packaging/dist", "packaging/.cache"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501"]  # line length is the formatter's job; long strings/comments are fine
+
+[tool.ruff.format]
+quote-style = "preserve"

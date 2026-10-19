@@ -1,10 +1,4 @@
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from utils import float2percent
-
+from clinreport_core.utils import float2percent
 
 FLOAT2PERCENT_CASES = [
     (0.0000019, '0.00019%'),

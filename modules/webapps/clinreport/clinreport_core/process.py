@@ -6,7 +6,7 @@ from .utils import float2percent, predict_insilico
 
 
 class SampleProcessor:
-    
+
     note2clinsig = {
         '1': 'патогенный',
         '2': 'вероятно патогенный',
