@@ -51,7 +51,7 @@ def target_triple() -> str:
 
 def platform_tag() -> str:
     arch = 'arm64' if target_triple().startswith('aarch64') else 'x64'
-    return {'win32': 'win', 'darwin': 'macos'}.get(sys.platform, 'linux') + '-' + arch
+    return {'win32': 'windows', 'darwin': 'macos'}.get(sys.platform, 'linux') + '-' + arch
 
 
 def get(url: str) -> bytes:
@@ -316,7 +316,7 @@ def package_windows(app: Path, version: str, out: Path) -> Path:
     if not iscc:
         sys.exit('Inno Setup (ISCC.exe) not found: install it from https://jrsoftware.org/isinfo.php')
     numeric = '.'.join((re.findall(r'\d+', version) + ['0', '0', '0'])[:3])
-    name = f'ClinReport-{version}-{platform_tag()}-setup'
+    name = f'ClinReport-{version}-{platform_tag()}'
     run(
         iscc,
         f'/DAppVersion={version}',

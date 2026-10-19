@@ -40,7 +40,7 @@ Run it with any Python ≥ 3.11; nothing is installed into that Python. Download
 `--package` (or `--package-only` for an existing bundle) must run on the target platform:
 
 - **Windows** → Inno Setup (`ISCC.exe`; per-user install to `%LOCALAPPDATA%\Programs\ClinReport`):
-  `ClinReport-<version>-win-x64-setup.exe`.
+  `ClinReport-<version>-windows-x64.exe`.
 - **macOS** → `ClinReport.app` (ad-hoc `codesign`) in `ClinReport-<version>-macos-<arm64|x64>.dmg` (`hdiutil`).
   Packaging **moves** the bundle into the `.app` — test it before packaging.
 - **Linux** → `.tar.gz` (testing only).

@@ -34,9 +34,9 @@ def version_key(version: str) -> tuple:
 
 
 def asset_suffix(platform_tag: str) -> str:
-    """Release asset names from packaging/build.py: ClinReport-<version>-<platform>-setup.exe / .dmg / .tar.gz."""
+    """Release asset names from packaging/build.py: ClinReport-<version>-<platform>.exe / .dmg / .tar.gz."""
     if platform_tag.startswith('win'):
-        return f'-{platform_tag}-setup.exe'
+        return f'-{platform_tag}.exe'
     if platform_tag.startswith('macos'):
         return f'-{platform_tag}.dmg'
     return f'-{platform_tag}.tar.gz'

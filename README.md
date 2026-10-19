@@ -16,7 +16,7 @@ One code base, three ways to run it:
 
 **Desktop app** — download from [Releases](https://github.com/emijks/clinreport/releases):
 
-- **Windows 10/11:** `ClinReport-<version>-win-x64-setup.exe`. If SmartScreen warns about an unknown publisher:
+- **Windows 10/11:** `ClinReport-<version>-windows-x64.exe`. If SmartScreen warns about an unknown publisher:
   «Подробнее» → «Выполнить в любом случае» (the app is not code-signed).
 - **macOS:** `ClinReport-<version>-macos-arm64.dmg` (Apple Silicon, macOS 11+) or `…-macos-x64.dmg` (Intel, macOS 10.15+).
   Drag ClinReport to Applications; on the first start right-click it → «Открыть» → «Открыть» (not notarised). If macOS

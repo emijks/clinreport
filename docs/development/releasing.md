@@ -28,7 +28,7 @@ desktop apps find it through the in-app update.
    ```
 
 4. Watch the Release workflow: Version → CI (lint, tests, three desktop builds with smoke tests, installers) and
-   Extension zip → GitHub release. Its files: `ClinReport-X-win-x64-setup.exe`, `ClinReport-X-macos-arm64.dmg`,
+   Extension zip → GitHub release. Its files: `ClinReport-X-windows-x64.exe`, `ClinReport-X-macos-arm64.dmg`,
    `ClinReport-X-macos-x64.dmg`, `clinreport-extension-X.zip`.
 5. Install the pre-release over the previous version (and update to it from inside the app); when it is good, tag
    `vX.Y.Z` on the same commit.

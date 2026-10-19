@@ -9,7 +9,7 @@
 
 | Система | Файл |
 |---|---|
-| Windows 10/11 | `ClinReport-<версия>-win-x64-setup.exe` |
+| Windows 10/11 | `ClinReport-<версия>-windows-x64.exe` |
 | macOS 11 и новее, Apple Silicon (M1–M4) | `ClinReport-<версия>-macos-arm64.dmg` |
 | macOS 10.15 и новее, Intel | `ClinReport-<версия>-macos-x64.dmg` |
 

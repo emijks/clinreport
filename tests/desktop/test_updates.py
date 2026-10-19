@@ -49,9 +49,9 @@ def test_version_order(older, newer):
 
 def test_asset_names_match_build_py():
     build = (ROOT / 'packaging' / 'build.py').read_text(encoding='utf-8')
-    assert "f'ClinReport-{version}-{platform_tag()}-setup'" in build
+    assert "f'ClinReport-{version}-{platform_tag()}'" in build
     assert "f'ClinReport-{version}-{platform_tag()}.dmg'" in build
-    assert updates.asset_suffix('win-x64') == '-win-x64-setup.exe'
+    assert updates.asset_suffix('windows-x64') == '-windows-x64.exe'
     assert updates.asset_suffix('macos-arm64') == '-macos-arm64.dmg'
 
 
@@ -60,32 +60,32 @@ def test_pick_skips_drafts_prereleases_and_other_tags():
         release('v3.1.0', draft=True),
         release('v3.1.0-rc1', prerelease=True),
         release('desktop-v9.0.0'),
-        release('v3.0.1', assets=['ClinReport-3.0.1-win-x64-setup.exe', 'ClinReport-3.0.1-macos-arm64.dmg']),
+        release('v3.0.1', assets=['ClinReport-3.0.1-windows-x64.exe', 'ClinReport-3.0.1-macos-arm64.dmg']),
         release('v3.0.0'),
     ]
-    found = updates.pick(releases, '3.0.0', 'win-x64')
+    found = updates.pick(releases, '3.0.0', 'windows-x64')
     assert found['version'] == '3.0.1' and found['newer'] and not found['prerelease']
-    assert found['asset']['name'] == 'ClinReport-3.0.1-win-x64-setup.exe'
+    assert found['asset']['name'] == 'ClinReport-3.0.1-windows-x64.exe'
 
-    with_pre = updates.pick(releases, '3.0.0', 'win-x64', include_prerelease=True)
+    with_pre = updates.pick(releases, '3.0.0', 'windows-x64', include_prerelease=True)
     assert with_pre['version'] == '3.1.0-rc1' and with_pre['prerelease'] and with_pre['asset'] is None
 
 
 def test_pick_current_or_older_is_not_newer():
-    releases = [release('v3.0.0', assets=['ClinReport-3.0.0-win-x64-setup.exe'])]
-    assert not updates.pick(releases, '3.0.0', 'win-x64')['newer']
-    assert not updates.pick(releases, '3.0.1', 'win-x64')['newer']
+    releases = [release('v3.0.0', assets=['ClinReport-3.0.0-windows-x64.exe'])]
+    assert not updates.pick(releases, '3.0.0', 'windows-x64')['newer']
+    assert not updates.pick(releases, '3.0.1', 'windows-x64')['newer']
 
 
 def test_pick_reads_the_published_digest():
-    item = release('v3.0.1', assets=['ClinReport-3.0.1-win-x64-setup.exe'])
+    item = release('v3.0.1', assets=['ClinReport-3.0.1-windows-x64.exe'])
     item['assets'][0]['digest'] = 'sha256:' + 'ab' * 32
-    assert updates.pick([item], '3.0.0', 'win-x64')['asset']['sha256'] == 'ab' * 32
+    assert updates.pick([item], '3.0.0', 'windows-x64')['asset']['sha256'] == 'ab' * 32
 
 
 def test_pick_without_releases_raises():
     with pytest.raises(RuntimeError):
-        updates.pick([release('v3.0.0', draft=True)], '3.0.0', 'win-x64')
+        updates.pick([release('v3.0.0', draft=True)], '3.0.0', 'windows-x64')
 
 
 def fake_get(payload: bytes):
@@ -103,7 +103,7 @@ def test_download_checks_size_and_digest(data_dir, monkeypatch):
     payload = b'installer' * 1000
     monkeypatch.setattr(updates, '_get', fake_get(payload))
     seen = []
-    asset = {'name': 'ClinReport-3.0.1-win-x64-setup.exe', 'url': 'x', 'size': len(payload),
+    asset = {'name': 'ClinReport-3.0.1-windows-x64.exe', 'url': 'x', 'size': len(payload),
              'sha256': hashlib.sha256(payload).hexdigest()}
     path = updates.download(asset, lambda done, total: seen.append((done, total)))
     assert path.read_bytes() == payload and path.parent == data_dir / 'updates'
