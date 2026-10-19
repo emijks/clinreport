@@ -77,6 +77,102 @@ def fetch_python(cache: Path, version: str) -> Path:
     return archive
 
 
+# --- macOS: oldest supported system (stack.toml [macos_minimum]) ---
+
+_MAC_PLATFORM = re.compile(r'^macosx_(\d+)_(\d+)_\w+$')
+_MACHO_MAGIC = {b'\xcf\xfa\xed\xfe', b'\xce\xfa\xed\xfe', b'\xca\xfe\xba\xbe', b'\xfe\xed\xfa\xcf', b'\xfe\xed\xfa\xce'}
+
+
+def macos_minimum() -> str:
+    return STACK['macos_minimum']['arm64' if target_triple().startswith('aarch64') else 'x64']
+
+
+def version_tuple(version: str) -> tuple:
+    return tuple(int(x) for x in version.split('.'))
+
+
+def wheel_macos_minimum(wheel_text: str) -> str | None:
+    """Oldest macOS a wheel runs on, from the Tag: lines of its .dist-info/WHEEL; None for non-macOS wheels."""
+    found = []
+    for line in wheel_text.splitlines():
+        if line.startswith('Tag:'):
+            for platform in line.split('-')[-1].strip().split('.'):
+                match = _MAC_PLATFORM.match(platform)
+                if match:
+                    found.append((int(match.group(1)), int(match.group(2))))
+    return '.'.join(map(str, min(found))) if found else None
+
+
+def wheels_too_new(purelib: Path, minimum: str) -> list:
+    """(name, version) of installed packages whose wheel needs a newer macOS than `minimum`."""
+    result = []
+    for dist_info in sorted(purelib.glob('*.dist-info')):
+        try:
+            needs = wheel_macos_minimum((dist_info / 'WHEEL').read_text(encoding='utf-8'))
+            metadata = (dist_info / 'METADATA').read_text(encoding='utf-8')
+        except OSError:
+            continue
+        if needs and version_tuple(needs) > version_tuple(minimum):
+            name = re.search(r'^Name: (.+)$', metadata, re.M).group(1).strip()
+            version = re.search(r'^Version: (.+)$', metadata, re.M).group(1).strip()
+            result.append((name, version))
+    return result
+
+
+def otool_minimum(otool_output: str) -> str | None:
+    """Newest macOS a Mach-O file requires, from `otool -l` (LC_BUILD_VERSION minos / LC_VERSION_MIN_MACOSX)."""
+    found = []
+    for block in otool_output.split('Load command'):
+        if 'LC_BUILD_VERSION' in block:
+            match = re.search(r'\bminos (\d+(?:\.\d+)*)', block)
+        elif 'LC_VERSION_MIN_MACOSX' in block:
+            match = re.search(r'\bversion (\d+(?:\.\d+)*)', block)
+        else:
+            continue
+        if match:
+            found.append(match.group(1))
+    return max(found, key=version_tuple) if found else None
+
+
+def refetch_old_wheels(python: Path, purelib: Path, env: dict):
+    """pip on a new macOS prefers wheels for that system (e.g. numpy's Accelerate build needs macOS 14):
+    replace them by the same version built for the oldest supported macOS."""
+    minimum = macos_minimum()
+    arch = 'arm64' if target_triple().startswith('aarch64') else 'x86_64'
+    too_new = wheels_too_new(purelib, minimum)
+    if not too_new:
+        return
+    wheels = HERE / 'dist' / '.old-macos-wheels'
+    shutil.rmtree(wheels, ignore_errors=True)
+    for name, version in too_new:
+        print(f'{name} {version}: wheel needs a macOS newer than {minimum}; fetching one for {minimum}')
+        run(python, '-I', '-m', 'pip', 'download', '--no-deps', '--only-binary=:all:',
+            '--platform', f'macosx_{minimum.replace(".", "_")}_{arch}', '-d', wheels, f'{name}=={version}', env=env)
+    run(python, '-I', '-m', 'pip', 'install', '--force-reinstall', '--no-deps', *sorted(wheels.glob('*.whl')), env=env)
+    shutil.rmtree(wheels, ignore_errors=True)
+    left = wheels_too_new(purelib, minimum)
+    if left:
+        sys.exit(f'no macOS {minimum} wheels for: {left}')
+
+
+def verify_macos_minimum(app: Path):
+    """Fail the build if any binary in the bundle needs a newer macOS than stack.toml promises."""
+    minimum = macos_minimum()
+    offenders = []
+    for path in app.rglob('*'):
+        if not path.is_file() or path.is_symlink():
+            continue
+        with open(path, 'rb') as fh:
+            if fh.read(4) not in _MACHO_MAGIC:
+                continue
+        needs = otool_minimum(subprocess.run(['otool', '-l', str(path)], capture_output=True, text=True).stdout)
+        if needs and version_tuple(needs) > version_tuple(minimum):
+            offenders.append(f'{path.relative_to(app)} needs macOS {needs}')
+    if offenders:
+        sys.exit(f'{len(offenders)} file(s) need a macOS newer than {minimum}:\n  ' + '\n  '.join(offenders[:30]))
+    print(f'all binaries run on macOS {minimum}+')
+
+
 def bundled_python(app: Path) -> Path:
     return app / 'python' / ('python.exe' if sys.platform == 'win32' else 'bin/python3')
 
@@ -142,6 +238,8 @@ def build(out: Path, version: str) -> Path:
             [str(python), '-I', '-c', 'import sysconfig; print(sysconfig.get_paths()["purelib"])'], text=True
         ).strip()
     )
+    if sys.platform == 'darwin':
+        refetch_old_wheels(python, purelib, env)
     target = purelib / 'clinreport_desktop'
     shutil.copytree(LAUNCHER / 'clinreport_desktop', target, ignore=shutil.ignore_patterns('__pycache__'))
     shutil.copy2(HERE / 'icon.png', target / 'ui' / 'icon.png')
@@ -193,6 +291,8 @@ def build(out: Path, version: str) -> Path:
     )
     if sys.platform == 'win32':
         shutil.copy2(HERE / 'windows' / 'clinreport.ico', app / 'clinreport.ico')
+    if sys.platform == 'darwin':
+        verify_macos_minimum(app)
     print(f'built {app}')
     return app
 
@@ -243,7 +343,8 @@ def package_macos(app: Path, version: str, out: Path) -> Path:
     launcher = contents / 'MacOS' / 'ClinReport'
     shutil.copy2(HERE / 'macos' / 'ClinReport', launcher)
     launcher.chmod(0o755)
-    plist = (HERE / 'macos' / 'Info.plist').read_text(encoding='utf-8').replace('@VERSION@', version)
+    plist = (HERE / 'macos' / 'Info.plist').read_text(encoding='utf-8')
+    plist = plist.replace('@VERSION@', version).replace('@MINOS@', macos_minimum())
     (contents / 'Info.plist').write_text(plist, encoding='utf-8')
     shutil.copy2(HERE / 'macos' / 'ClinReport.icns', resources / 'ClinReport.icns')
     # Ad-hoc signature: Apple Silicon refuses unsigned code; Gatekeeper still asks once (README.md).

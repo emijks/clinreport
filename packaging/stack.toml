@@ -12,3 +12,9 @@ base_modules = ["mappers/hg38", "webviewerwidgets/wgnote", "reporters/excelrepor
 
 # GitHub repository whose v* releases the in-app update check reads; empty = off.
 update_repo = "emijks/clinreport"
+
+# Oldest macOS the app runs on, per architecture: build.py re-fetches wheels built for newer systems, checks every
+# Mach-O file in the bundle against it and writes it into Info.plist (LSMinimumSystemVersion).
+[macos_minimum]
+x64 = "10.15"
+arm64 = "11.0"
