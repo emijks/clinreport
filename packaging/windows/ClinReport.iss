@@ -105,6 +105,8 @@ Name: "{userdesktop}\ClinReport"; Filename: "{app}\python\pythonw.exe"; Paramete
 
 [Run]
 Filename: "{app}\python\pythonw.exe"; Parameters: "-I -m clinreport_desktop"; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,ClinReport}"; Flags: nowait postinstall skipifsilent
+; In-app update (launchers/desktop/clinreport_desktop/updates.py): /SILENT /RELAUNCH=1 starts the new version.
+Filename: "{app}\python\pythonw.exe"; Parameters: "-I -m clinreport_desktop"; WorkingDir: "{app}"; Flags: nowait; Check: RelaunchRequested
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\python"
@@ -116,6 +118,11 @@ begin
   if not RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{#AppGuid}_is1',
                              'DisplayVersion', Result) then
     Result := '';
+end;
+
+function RelaunchRequested(): Boolean;
+begin
+  Result := WizardSilent and (ExpandConstant('{param:RELAUNCH|0}') = '1');
 end;
 
 procedure InitializeWizard();

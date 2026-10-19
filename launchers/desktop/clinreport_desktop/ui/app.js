@@ -145,10 +145,7 @@ async function refreshState() {
 function renderComponents(state) {
   const v = state.versions;
   const update = state.update || {};
-  const updateChip = update.newer
-    ? el('button', { type: 'button', className: 'chip info', title: 'Открыть страницу выпуска',
-      onclick: () => busy(null, () => call('open_link', update.url)) }, `доступна ${update.version}`)
-    : null;
+  const updateChip = update.newer ? updateControl(update) : null;
   const modules = state.modules.map((m) => el('span', { className: m.ok ? 'chip ok' : 'chip err', title: m.version ? `версия ${m.version}` : 'не установлен' }, m.name));
   $('components').replaceChildren(
     el('dt', {}, 'ClinReport'), el('dd', {}, v.app, updateChip),
@@ -157,6 +154,34 @@ function renderComponents(state) {
     el('dt', {}, 'Python'), el('dd', {}, v.python),
     el('dt', {}, 'Модули'), el('dd', {}, modules),
   );
+}
+
+let updateConfirm = false;
+
+function updateControl(update) {
+  if (update.state === 'downloading') {
+    const pct = update.total ? Math.floor((100 * update.done) / update.total) : 0;
+    return el('span', { className: 'chip plain' }, `загрузка ${update.version}: ${pct}%`);
+  }
+  if (update.state === 'installing') return el('span', { className: 'chip plain' }, `установка ${update.version}…`);
+  const label = update.can_install ? `обновить до ${update.version}` : `доступна ${update.version}`;
+  const title = update.install_error ? `Не удалось: ${update.install_error}`
+    : update.can_install ? 'Скачать и установить; ClinReport перезапустится, настройки и шаблоны сохранятся'
+      : 'Открыть страницу выпуска';
+  const install = () => busy(null, async () => {
+    updateConfirm = false;
+    await call('install_update');
+    refreshState();
+  });
+  if (updateConfirm) {
+    return el('span', { className: 'confirm neutral' }, `Установить ${update.version}? ClinReport закроется и запустится снова.`,
+      el('button', { className: 'btn sm primary', type: 'button', onclick: install }, 'Установить'),
+      el('button', { className: 'btn sm ghost', type: 'button', onclick: () => { updateConfirm = false; refreshState(); } }, 'Отмена'));
+  }
+  return el('button', {
+    type: 'button', className: update.install_error ? 'chip warn' : 'chip info', title,
+    onclick: update.can_install ? () => { updateConfirm = true; refreshState(); } : install,
+  }, label);
 }
 
 function ruChip(ru) {
@@ -338,6 +363,7 @@ async function loadSettings() {
     $('s-template').value = s.default_template;
     $('s-browser').checked = Boolean(s.launcher.open_browser);
     $('s-autostart').checked = Boolean(s.launcher.autostart);
+    $('s-prerelease').checked = Boolean(s.launcher.update_prerelease);
     $(s.launcher.port_mode === 'fixed' ? 's-port-fixed' : 's-port-auto').checked = true;
     $('s-port-value').value = s.launcher.port;
     $('s-data-dir').textContent = s.data_dir;
@@ -358,6 +384,7 @@ async function saveSettings() {
   const report = { clinician: $('s-clinician').value, template: $('s-template').value };
   const launcher = {
     open_browser: $('s-browser').checked, autostart: $('s-autostart').checked,
+    update_prerelease: $('s-prerelease').checked,
     port_mode: $('s-port-fixed').checked ? 'fixed' : 'auto', port: Number($('s-port-value').value) || 8080,
   };
   const result = await call('save_settings', report, launcher);

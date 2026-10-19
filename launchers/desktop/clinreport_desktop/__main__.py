@@ -96,12 +96,32 @@ class App:
             log.warning('module Store unreachable: %s', e)
 
     def check_updates(self):
+        updates.clean_downloads()
         try:
-            self.update = dict(updates.latest(), state='ok')
+            found = updates.latest(include_prerelease=config.load()['update_prerelease'])
+            self.update = dict(found, state='ok', can_install=updates.can_install() and bool(found['asset']))
             if self.update['newer']:
                 log.info('update available: %s', self.update['version'])
         except Exception as e:
             self.update = {'state': 'unknown', 'error': str(e)}
+
+    def install_update(self):
+        """Download the newer release's setup and start it (Windows); the setup then closes this launcher."""
+        update = self.update
+        if not (update.get('newer') and update.get('can_install')) or update.get('state') == 'downloading':
+            return
+
+        def progress(done, total):
+            self.update = dict(update, state='downloading', done=done, total=total)
+
+        try:
+            progress(0, update['asset'].get('size') or 0)
+            setup = updates.download(update['asset'], progress)
+            self.update = dict(update, state='installing')
+            updates.run_installer(setup)
+        except Exception as e:
+            log.warning('update failed: %s', e)
+            self.update = dict(update, state='ok', install_error=str(e))
 
     def open_result(self, path):
         from .api import Api

@@ -17,6 +17,7 @@ DEFAULTS = {
     'autostart': False,  # start at login (minimised)
     'port_mode': 'auto',  # 'auto' | 'fixed'
     'port': 8080,
+    'update_prerelease': False,  # also offer pre-releases (v3.1.0-rc1) as updates
     'recent': [],  # [{"path": ..., "opened": epoch seconds}], newest first
 }
 RECENT_MAX = 8
@@ -58,7 +59,7 @@ def update(changes: dict) -> dict:
                 raise ValueError('Порт должен быть от 1024 до 65535.')
         elif key == 'port_mode' and value not in ('auto', 'fixed'):
             raise ValueError(f'Неизвестный режим порта: {value}')
-        elif key in ('open_browser', 'autostart'):
+        elif key in ('open_browser', 'autostart', 'update_prerelease'):
             value = bool(value)
         settings[key] = value
     save(settings)

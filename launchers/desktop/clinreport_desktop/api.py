@@ -12,6 +12,7 @@ import os
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
 import urllib.parse
 import webbrowser
@@ -255,6 +256,8 @@ class Api:
         after = config.update(launcher or {})
         if 'autostart' in (launcher or {}) and bool(launcher['autostart']) != autostart.is_enabled():
             autostart.set_enabled(bool(launcher['autostart']))
+        if before['update_prerelease'] != after['update_prerelease']:
+            threading.Thread(target=self._app.check_updates, daemon=True).start()
         restart = (before['port_mode'], before['port']) != (after['port_mode'], after['port'])
         log.info('settings saved%s', ' (port changed)' if restart else '')
         return {'ok': True, 'restart_needed': restart and self._app.server.state == 'running'}
@@ -278,6 +281,18 @@ class Api:
     @_safe
     def open_logs_folder(self):
         open_folder(paths.logs_dir())
+        return {'ok': True}
+
+    @_safe
+    def install_update(self):
+        """Windows: download and run the newer installer in the background; elsewhere: open the release page."""
+        update = self._app.update
+        if not update.get('newer'):
+            raise ValueError('Обновлений нет.')
+        if not update.get('can_install'):
+            webbrowser.open(update['url'])
+            return {'ok': True, 'opened': update['url']}
+        threading.Thread(target=self._app.install_update, daemon=True, name='update').start()
         return {'ok': True}
 
     @_safe
