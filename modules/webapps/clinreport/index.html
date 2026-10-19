@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ClinReport</title>
+  <link rel="icon" href="/submit/logo_transparent.png" type="image/png">
+  <link rel="icon" href="static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">ClinReport <span class="brand-sub">для OpenCRAVAT</span></div>
+    <div class="file" id="file-name" title=""></div>
+    <button type="button" class="btn ghost" id="templates-btn">Шаблоны</button>
+    <button type="button" class="btn ghost" id="settings-btn">Настройки</button>
+  </header>
+
+  <main>
+    <div id="notices" class="notices" aria-live="polite"></div>
+
+    <section class="card" id="open-card" hidden>
+      <h2>Файл результата</h2>
+      <p class="hint">Страница открыта без файла. Откройте её кнопкой в сводке результата OpenCRAVAT
+        или укажите путь к SQLite-файлу задания.</p>
+      <form class="row" id="open-form">
+        <input type="text" id="open-path" class="grow" placeholder="C:\open-cravat\jobs\…\result.sqlite" required>
+        <button type="submit" class="btn primary">Открыть</button>
+      </form>
+    </section>
+
+    <section class="card" id="process-card" hidden>
+      <div class="row">
+        <label class="field-inline">Целевой образец
+          <select id="target"></select>
+        </label>
+        <button type="button" class="btn primary" id="process-btn">Обработать</button>
+        <button type="button" class="btn" id="process-lpwgs-btn">Обработать как LPWGS</button>
+        <span class="spacer"></span>
+        <span class="muted" id="clinician-line"></span>
+      </div>
+      <p class="hint">В отчёт попадают варианты, отмеченные в колонке <b>Note</b>:
+        1 — патогенный, 2 — вероятно патогенный, 3 — VUS, 7 — не связан с основным диагнозом, 8 — носительство.
+        После изменения отметок нажмите «Обработать» ещё раз.</p>
+    </section>
+
+    <section id="reports" hidden>
+      <nav class="tabs" id="tabs" role="tablist"></nav>
+      <div id="panels"></div>
+    </section>
+  </main>
+
+  <dialog id="settings-dialog">
+    <form method="dialog" id="settings-form">
+      <h2>Настройки</h2>
+      <p class="hint" id="settings-user" hidden></p>
+      <label class="field">Клиницист<input name="clinician" autocomplete="off"></label>
+      <label class="field">Шаблон по умолчанию<select name="template" id="default-template"></select></label>
+      <label class="check" id="auto-upload-row"><input type="checkbox" name="auto_upload"> Автоматически выгружать в БД при сохранении</label>
+      <p class="hint">Имя клинициста подставляется при следующей обработке.</p>
+      <div class="row end">
+        <button type="button" class="btn ghost" value="cancel" id="settings-cancel">Отмена</button>
+        <button type="submit" class="btn primary" value="save">Сохранить</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="templates-dialog" class="wide">
+    <div class="row">
+      <h2 style="margin:0">Шаблоны заключений</h2>
+      <span class="spacer"></span>
+      <button type="button" class="btn ghost" id="templates-close">Закрыть</button>
+    </div>
+    <p class="hint">Шаблон — документ Word с полями вида <code>{{ patient.id }}</code> и циклами
+      <code>{%tr for v in p_variants %}</code>. Начните с образца и сверяйтесь со списком полей.
+      Свои шаблоны хранятся в папке настроек OpenCRAVAT и сохраняются при обновлении.</p>
+    <div id="templates-list" class="tpl-list"></div>
+    <form id="template-add-form" class="tpl-add">
+      <h3>Добавить шаблон</h3>
+      <div class="tpl-add-grid">
+        <label class="field">Файл .docx<input type="file" id="tpl-file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required></label>
+        <label class="field">Название<input type="text" id="tpl-title" required autocomplete="off"></label>
+        <label class="field">Для документа<select id="tpl-kind"></select></label>
+        <button type="submit" class="btn primary" id="tpl-add-btn">Добавить</button>
+      </div>
+    </form>
+    <p class="hint" id="templates-readonly" hidden>Шаблоны на этом сервере меняет администратор.</p>
+    <div class="row" style="margin-top:12px">
+      <button type="button" class="btn small" id="tpl-sample-btn">Скачать образец (DZM)</button>
+      <button type="button" class="btn small ghost" id="tpl-fields-btn" aria-expanded="false">Список полей</button>
+    </div>
+    <div id="tpl-fields" class="tpl-fields" hidden></div>
+  </dialog>
+
+  <dialog id="similar-dialog">
+    <h2 id="similar-title">Похожие варианты</h2>
+    <div id="similar-body"></div>
+    <div class="row end"><button type="button" class="btn" id="similar-close">Закрыть</button></div>
+  </dialog>
+
+  <dialog id="error-dialog">
+    <h2>Ошибка</h2>
+    <p id="error-message"></p>
+    <details id="error-details"><summary>Подробности</summary><pre id="error-trace"></pre></details>
+    <div class="row end"><button type="button" class="btn" id="error-close">Закрыть</button></div>
+  </dialog>
+
+  <script src="static/app.js"></script>
+</body>
+</html>

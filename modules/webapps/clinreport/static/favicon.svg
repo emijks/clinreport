@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- ClinReport: a report sheet with a folded corner, in the page's accent colour -->
+  <path d="M7 2h13l7 7v19a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" fill="#1f5fa8"/>
+  <path d="M20 2l7 7h-5a2 2 0 0 1-2-2z" fill="#8fb3dd"/>
+  <rect x="9" y="14" width="14" height="2.4" rx="1.2" fill="#fff"/>
+  <rect x="9" y="19" width="14" height="2.4" rx="1.2" fill="#fff"/>
+  <rect x="9" y="24" width="9" height="2.4" rx="1.2" fill="#fff"/>
+</svg>

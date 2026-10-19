@@ -1,0 +1,16 @@
+title: ClinReport
+version: 1.0.0
+type: webviewerwidget
+# 'base' is present in every result, so the widget is always offered on the Summary tab.
+required_annotator: base
+description: Opens the ClinReport review window (webapp clinreport) for the current result.
+developer:
+  name: ''
+  organization: ''
+  email: ''
+  website: ''
+  citation: ''
+release_note:
+  1.0.0: Summary-tab entry point of the ClinReport webapp.
+tags:
+- reporters
