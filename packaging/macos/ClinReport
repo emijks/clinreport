@@ -1,0 +1,4 @@
+#!/bin/sh
+# ClinReport.app/Contents/MacOS/ClinReport — starts the bundled Python with the launcher.
+here="$(cd "$(dirname "$0")" && pwd)"
+exec "$here/../Resources/ClinReport/python/bin/python3" -I -m clinreport_desktop "$@"

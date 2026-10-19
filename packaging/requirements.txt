@@ -1,0 +1,12 @@
+# Installed by build.py into the bundled Python next to open-cravat==<stack.toml opencravat>.
+
+# Our modules (modules/webapps/clinreport): docxtpl; Postgres client for «Выгрузить в базу» / «Похожие».
+docxtpl
+sqlalchemy
+psycopg2-binary
+
+# Desktop launcher (launchers/desktop)
+pywebview==6.2.1
+psutil==7.2.2
+# OpenCRAVAT 3.x runs Celery with the filesystem broker; kombu needs pywin32 for it on Windows.
+pywin32==312; sys_platform == "win32"
