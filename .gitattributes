@@ -1,0 +1,12 @@
+* text=auto
+# Executed on macOS/Linux: must keep LF even in a Windows checkout.
+*.sh text eol=lf
+packaging/macos/ClinReport text eol=lf
+packaging/macos/Info.plist text eol=lf
+# Binary
+*.docx binary
+*.ico binary
+*.icns binary
+*.png binary
+*.bmp binary
+*.sqlite binary

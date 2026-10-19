@@ -5,3 +5,15 @@ dist
 *.spec
 .venv
 temp/
+
+# Result files contain patient data: never commit them.
+*.sqlite
+*.sqlite-journal
+
+# Tooling and build caches
+.cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
