@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import secrets
+import sys
 import threading
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -12,6 +13,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from . import paths
 
 log = logging.getLogger('clinreport.instance')
+
+# Held while a launcher runs; the Windows installer (packaging/windows/ClinReport.iss, LauncherMutex) waits for it to
+# disappear before replacing files.
+MUTEX_NAME = 'ClinReportLauncher'
+_mutex = None
+
+
+def hold_mutex():
+    """Windows: create the named mutex for the life of this process (released by the OS on exit)."""
+    global _mutex
+    if sys.platform != 'win32' or _mutex:
+        return
+    import ctypes
+
+    _mutex = ctypes.windll.kernel32.CreateMutexW(None, False, MUTEX_NAME)
 
 
 def _file():

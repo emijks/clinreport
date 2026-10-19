@@ -221,6 +221,8 @@ def package_windows(app: Path, version: str, out: Path) -> Path:
         iscc,
         f'/DAppVersion={version}',
         f'/DAppVersionNumeric={numeric}',
+        f'/DOpenCravatVersion={STACK["opencravat"]}',
+        f'/DPythonVersion={STACK["python"]}',
         f'/DSourceDir={app}',
         f'/DOutputDir={out}',
         f'/DOutputName={name}',

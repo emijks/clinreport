@@ -267,6 +267,7 @@ def main(argv=None):
         app.versions['python'],
         app.versions['platform'],
     )
+    instance.hold_mutex()
     listener = instance.Listener(app.activate, app.quit)
     try:
         if args.headless:
