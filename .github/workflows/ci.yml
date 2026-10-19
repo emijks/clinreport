@@ -1,0 +1,141 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+  # release.yml runs the same checks and takes the desktop installers built here.
+  workflow_call:
+    inputs:
+      version:
+        description: App version for the desktop builds (empty = 0.0.0-ci.<run number>)
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
+
+env:
+  PYTHONUTF8: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - run: pip install ruff
+      - run: ruff check --output-format=github .
+
+  tests:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: |
+            requirements-dev.txt
+            packaging/requirements.txt
+      - run: pip install -r requirements-dev.txt
+      # Tests that need the example results (patient data, never in the repository) are skipped here.
+      # Coverage is reported, not enforced yet (pyproject.toml fail_under is the target).
+      - name: pytest
+        run: python -m pytest --cov --cov-report=term --cov-report=xml --cov-fail-under=0
+      - name: Coverage summary
+        if: runner.os == 'Linux'
+        run: python -m coverage report --format=markdown --fail-under=0 >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Linux'
+        with:
+          name: coverage
+          path: coverage.xml
+          retention-days: 14
+
+  desktop:
+    name: Desktop app (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, name: win-x64 }
+          - { os: macos-15, name: macos-arm64 }
+          - { os: macos-15-intel, name: macos-x64 }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - name: Download cache (Python, base modules)
+        uses: actions/cache@v4
+        with:
+          path: packaging/.cache
+          key: desktop-${{ matrix.name }}-${{ hashFiles('packaging/stack.toml') }}
+      - name: Inno Setup
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      - name: Version
+        run: |
+          VERSION="${{ inputs.version }}"
+          VERSION="${VERSION#v}"
+          [ -n "$VERSION" ] || VERSION="0.0.0-ci.${GITHUB_RUN_NUMBER}"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          if [ "$RUNNER_OS" = "Windows" ]; then echo "PY=packaging/dist/ClinReport/python/python.exe" >> "$GITHUB_ENV";
+          else echo "PY=packaging/dist/ClinReport/python/bin/python3" >> "$GITHUB_ENV"; fi
+      - name: Build the bundle
+        env:
+          GITHUB_TOKEN: ${{ github.token }}  # base modules come from the GitHub API (rate limit)
+        run: python packaging/build.py --version "$VERSION"
+      - name: Headless start and HTTP checks
+        env:
+          CLINREPORT_DATA_DIR: ${{ runner.temp }}/clinreport-data
+        run: |
+          "$PY" -I -m clinreport_desktop --headless > "$RUNNER_TEMP/headless.log" 2>&1 &
+          for i in $(seq 1 120); do grep -q "ClinReport: http" "$RUNNER_TEMP/headless.log" && break; sleep 2; done
+          cat "$RUNNER_TEMP/headless.log"
+          url=$(grep -o "http://localhost:[0-9]*" "$RUNNER_TEMP/headless.log" | head -1)
+          test -n "$url"
+          curl -sf "$url/webapps/clinreport/index.html" > /dev/null
+          curl -sf "$url/webapps/clinreport/templates" > /dev/null
+          curl -sf "$url/result/service/widgetlist" > /dev/null
+          "$PY" -I -m clinreport_desktop --quit
+      - name: Window self-test
+        env:
+          CLINREPORT_DATA_DIR: ${{ runner.temp }}/clinreport-data-window
+        run: |
+          "$PY" -I -m clinreport_desktop --selftest "$RUNNER_TEMP/selftest.json"
+          cat "$RUNNER_TEMP/selftest.json"
+          "$PY" -I -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1], encoding='utf-8'))['ok'] else 1)" "$RUNNER_TEMP/selftest.json"
+      - name: Package
+        run: python packaging/build.py --version "$VERSION" --package-only
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clinreport-${{ matrix.name }}
+          path: |
+            packaging/dist/*.exe
+            packaging/dist/*.dmg
+          if-no-files-found: error
+          retention-days: 14

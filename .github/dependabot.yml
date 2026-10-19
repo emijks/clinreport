@@ -1,0 +1,29 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Dependencies of our modules and the desktop launcher (bundled into the app by packaging/build.py).
+  - package-ecosystem: pip
+    directory: /packaging
+    schedule:
+      interval: monthly
+    groups:
+      desktop:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: monthly
+    ignore:
+      # Pinned in packaging/stack.toml too; bumped together, by hand, after testing a new OpenCRAVAT.
+      - dependency-name: open-cravat
+    groups:
+      dev:
+        patterns: ["*"]

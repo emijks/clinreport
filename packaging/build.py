@@ -379,12 +379,22 @@ def main():
     parser.add_argument('--version', default=None, help='app version (default: git describe of v* tags)')
     parser.add_argument('--out', type=Path, default=HERE / 'dist')
     parser.add_argument('--package', action='store_true', help='also build the installer / disk image / archive')
+    parser.add_argument(
+        '--package-only',
+        action='store_true',
+        help='package <out>/ClinReport built earlier (CI tests the bundle first; packaging moves it on macOS)',
+    )
     args = parser.parse_args()
     version = args.version or version_default()
     out = args.out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    app = build(out, version)
-    if args.package:
+    if args.package_only:
+        app = out / 'ClinReport'
+        if not (app / 'bundle.json').is_file():
+            sys.exit(f'{app} is not a built bundle: run build.py without --package-only first')
+    else:
+        app = build(out, version)
+    if args.package or args.package_only:
         packager = {'win32': package_windows, 'darwin': package_macos}.get(sys.platform, package_linux)
         print(f'packaged {packager(app, version, out)}')
 

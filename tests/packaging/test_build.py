@@ -75,3 +75,12 @@ def test_stack_and_plist_agree(build):
 
 def test_our_modules_are_found(build):
     assert build.our_modules() == ['webapps/clinreport', 'webviewerwidgets/wgclinreport']
+
+
+def test_dev_environment_uses_the_pinned_stack(build):
+    """Tests run on the same OpenCRAVAT and Python minor version as the desktop app ships."""
+    dev = (ROOT / 'requirements-dev.txt').read_text(encoding='utf-8')
+    assert f'open-cravat=={build.STACK["opencravat"]}' in dev.splitlines()
+    minor = '.'.join(build.STACK['python'].split('.')[:2])
+    ci = (ROOT / '.github' / 'workflows' / 'ci.yml').read_text(encoding='utf-8')
+    assert ci.count('python-version: "') == ci.count(f'python-version: "{minor}"') > 0

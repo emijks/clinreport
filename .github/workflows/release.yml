@@ -1,111 +1,101 @@
-name: Build and Release
+name: Release
 
+# Push a tag vX.Y.Z (or vX.Y.Z-rc1 for a pre-release) whose X.Y.Z equals pyproject.toml's version.
+# workflow_dispatch builds everything as 0.0.0-manual.<run> and publishes nothing (a dry run).
 on:
   push:
-    tags:
-      - "v*.*"
-  workflow_dispatch: 
+    tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            arch_suffix: win-x64
-            data_sep: ";"
-          - os: macos-15-intel
-            arch_suffix: macos-x64
-            data_sep: ":"
-
-    runs-on: ${{ matrix.os }}
-
+  version:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
-      - name: Install dependencies
+      - uses: actions/checkout@v5
+      - id: version
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-
-      - name: Force legacy (non-Accelerate) NumPy wheel on macOS
-        if: runner.os == 'macOS'
-        shell: bash
-        run: |
-          pip download --no-deps --only-binary=:all: \
-            --platform macosx_10_13_x86_64 \
-            --python-version 3.13 \
-            --implementation cp \
-            --abi cp313 \
-            -d ./numpy_wheel numpy
-          pip install --force-reinstall --no-deps ./numpy_wheel/*.whl
-
-      - name: Build with PyInstaller
-        shell: bash
-        run: >
-          pyinstaller --windowed
-          --add-data "config.json${{ matrix.data_sep }}."
-          --add-data "templates${{ matrix.data_sep }}templates"
-          --collect-all docx
-          --name clinreport
-          --noconfirm
-          app.py
-
-      - name: Set artifact name
-        shell: bash
-        run: |
-          if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            VERSION="${{ github.ref_name }}"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            PROJECT=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+            if [ "${VERSION%%-*}" != "$PROJECT" ]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match pyproject.toml version $PROJECT"
+              exit 1
+            fi
           else
-            VERSION="manual-${{ github.run_number }}"
+            VERSION="0.0.0-manual.${GITHUB_RUN_NUMBER}"
           fi
-          echo "ARTIFACT_NAME=clinreport-${VERSION}-${{ matrix.arch_suffix }}" >> "$GITHUB_ENV"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Package artifact (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          Compress-Archive -Path dist/clinreport -DestinationPath dist/${{ env.ARTIFACT_NAME }}.zip
+  checks:
+    name: CI
+    needs: version
+    uses: ./.github/workflows/ci.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
 
-      - name: Package artifact (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          cd dist
-          ditto -c -k --sequesterRsrc --keepParent clinreport.app ${{ env.ARTIFACT_NAME }}.zip
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.ARTIFACT_NAME }}
-          path: dist/${{ env.ARTIFACT_NAME }}.zip
-          if-no-files-found: error
-
-  release:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+  extension:
+    name: Extension zip
+    needs: version
     runs-on: ubuntu-latest
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v5
+      - name: Package
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          staging="dist/clinreport-extension-$VERSION"
+          mkdir -p "$staging"
+          cp packaging/install_extension.py "$staging/"
+          cp -r modules "$staging/modules"
+          rm -f "$staging/modules/ruff.toml"
+          find "$staging" -name __pycache__ -prune -exec rm -rf {} +
+          (cd dist && zip -qr "clinreport-extension-$VERSION.zip" "clinreport-extension-$VERSION")
+      - uses: actions/upload-artifact@v4
         with:
-          path: artifacts
+          name: clinreport-extension
+          path: dist/*.zip
+          if-no-files-found: error
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+  publish:
+    name: GitHub release
+    needs: [version, checks, extension]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
         with:
-          name: "ClinReport ${{ github.ref_name }}"
-          generate_release_notes: false
-          draft: false
+          pattern: clinreport-*
+          path: artifacts
+          merge-multiple: true
+      - name: Release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          base="${VERSION%%-*}"
+          if [ -f CHANGELOG.md ]; then
+            awk -v v="$base" '
+              /^## / { if (found) exit; if (index($0, "[" v "]") || $2 == v) { found = 1; next } }
+              found { print }
+            ' CHANGELOG.md > notes.md
+          fi
+          [ -s notes.md ] || echo "ClinReport $VERSION" > notes.md
+          cat notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: ClinReport ${{ github.ref_name }}
+          body_path: notes.md
+          prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
-            artifacts/*/*.zip
+            artifacts/*.exe
+            artifacts/*.dmg
+            artifacts/*.zip
+          fail_on_unmatched_files: true
