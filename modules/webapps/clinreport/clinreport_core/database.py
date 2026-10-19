@@ -1,70 +1,115 @@
-from sqlalchemy import create_engine
-from urllib.parse import quote
-from contextlib import contextmanager
+"""Data sources: the OpenCRAVAT SQLite, the Russian annotation sheet and Postgres.
+
+Ported from clinreport/database.py without pandas (it only served the sheet
+download and Postgres I/O), so the module installs into any OpenCRAVAT Python.
+VariantSource is unchanged.
+"""
+
+from __future__ import annotations
+
+import csv
+import io
 import sqlite3
-import socket
-import pandas as pd
-import json
+import urllib.request
+from urllib.parse import quote
+
+RU_ANNOTATIONS_URL = 'https://docs.google.com/spreadsheets/d/1Zj_Gw-TolcoKljqfk4eCrQ1hyhlZDs44UOZbFTVTfes'
+RU_ANNOTATIONS_SHEETS = {'omim': '0', 'secondary': '706494431'}
+
+
+def _read_sheet(url: str, timeout: int) -> dict:
+    """CSV -> {column: {first-column value: cell}}, like pandas read_csv(index_col=0).to_dict().
+
+    Empty cells are skipped, so a lookup falls back to the OpenCRAVAT value
+    instead of returning an empty string.
+    """
+    with urllib.request.urlopen(url, timeout=timeout) as response:
+        text = response.read().decode('utf-8')
+    rows = list(csv.reader(io.StringIO(text)))
+    if not rows:
+        return {}
+    header = rows[0]
+    table = {column: {} for column in header[1:]}
+    for row in rows[1:]:
+        if not row:
+            continue
+        for column, value in zip(header[1:], row[1:]):
+            if value != '':
+                table[column][row[0]] = value
+    return table
 
 
 def get_ru_annotations(timeout: int = 10) -> dict:
-    socket.setdefaulttimeout(timeout)
-    url = 'https://docs.google.com/spreadsheets/d/1Zj_Gw-TolcoKljqfk4eCrQ1hyhlZDs44UOZbFTVTfes'
     return {
-        'omim': pd.read_csv(f'{url}/export?format=csv&gid=0', index_col=0).to_dict(),
-        'secondary': pd.read_csv(f'{url}/export?format=csv&gid=706494431', index_col=0).to_dict(),
+        name: _read_sheet(f'{RU_ANNOTATIONS_URL}/export?format=csv&gid={gid}', timeout)
+        for name, gid in RU_ANNOTATIONS_SHEETS.items()
     }
 
+
 class Database:
+    """Postgres "ReportedVariants" table (sqlalchemy + psycopg2 are optional deps)."""
 
-    def __init__(self, db_creds: str | dict):
-        self.db_creds = self.setup_creds(db_creds)
+    TABLE = 'ReportedVariants'
+    REQUIRED_KEYS = ('user', 'pass', 'host', 'port', 'name')
 
-    def setup_creds(self, creds: str | dict) -> dict:
-        if isinstance(creds, dict):
-            return creds
-        with open(creds, 'r') as fh:
-            return json.load(fh)
-
-    @contextmanager
-    def conn(self):
-        engine = create_engine(
+    def __init__(self, db_creds: dict, url: str | None = None):
+        self.db_creds = db_creds
+        self.url = url or (
             f'postgresql+psycopg2://'
-            f'{self.db_creds["user"]}:{quote(self.db_creds["pass"])}@{self.db_creds["host"]}:{self.db_creds["port"]}/{self.db_creds["name"]}'
+            f'{db_creds["user"]}:{quote(db_creds["pass"])}@{db_creds["host"]}:{db_creds["port"]}/{db_creds["name"]}'
         )
-        with engine.connect() as conn:
-            yield conn
-            conn.commit()
+        self._engine = None
 
-    def insert(self, payload):
-        with self.conn() as conn:
-            payload.to_sql("ReportedVariants", con=conn, if_exists="append", index=False)
+    @classmethod
+    def is_configured(cls, creds: dict) -> bool:
+        return all(creds.get(key) for key in cls.REQUIRED_KEYS)
 
+    @property
+    def engine(self):
+        if self._engine is None:
+            from sqlalchemy import create_engine
 
-    def sample_data_exists(self, sample):
-        with self.conn() as conn:
-            sample_data = pd.read_sql(
-                f'''select * from "ReportedVariants" where "Номер образца" = '{sample}';''',
-                con=conn
-            )
-        return bool(len(sample_data))
+            self._engine = create_engine(self.url)
+        return self._engine
 
-    def get_similar_variants(self, variant_data):
-            """Запрос к БД для получения похожих вариантов (variant_data — строка context)."""
-            dna_change = variant_data['variation'].split('\n')[0]
-            with self.conn() as conn:
-                query = f"""
-                    SELECT 
-                        "Номер образца", "Патогенность", "Клиницист", "Дата заключения"
-                    FROM "ReportedVariants" 
-                    WHERE "Изменение ДНК (HG38) (Изменение белка)" LIKE '%%{dna_change}%%'
-                    """
-                similar_variants = pd.read_sql(query, conn).to_dict('records')
-                return similar_variants
+    def insert(self, records: list) -> int:
+        if not records:
+            return 0
+        from sqlalchemy import text
+
+        columns = list(records[0])
+        column_sql = ', '.join(f'"{column}"' for column in columns)
+        values_sql = ', '.join(f':p{i}' for i in range(len(columns)))
+        params = [{f'p{i}': record.get(column) for i, column in enumerate(columns)} for record in records]
+        with self.engine.begin() as conn:
+            conn.execute(text(f'insert into "{self.TABLE}" ({column_sql}) values ({values_sql})'), params)
+        return len(records)
+
+    def sample_data_exists(self, sample) -> bool:
+        from sqlalchemy import text
+
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text(f'select 1 from "{self.TABLE}" where "Номер образца" = :sample limit 1'),
+                {'sample': str(sample)},
+            ).first()
+        return row is not None
+
+    def get_similar_variants(self, variant_data: dict) -> list:
+        """Earlier reported variants with the same DNA change (variant_data is a context row)."""
+        from sqlalchemy import text
+
+        dna_change = str(variant_data.get('variation', '')).split('\n')[0]
+        query = text(
+            f'select "Номер образца", "Патогенность", "Клиницист", "Дата заключения" '
+            f'from "{self.TABLE}" where "Изменение ДНК (HG38) (Изменение белка)" like :pattern'
+        )
+        with self.engine.connect() as conn:
+            rows = conn.execute(query, {'pattern': f'%{dna_change}%'}).mappings().all()
+        return [dict(row) for row in rows]
 
 
 class VariantSource:
-
     inheritance_map = {
         'Autosomal dominant': 'AD',
         'X-linked dominant': 'XD',
@@ -80,7 +125,7 @@ class VariantSource:
             cur = con.cursor()
             return [row[0] for row in cur.execute('select distinct base__sample_id from sample;').fetchall()]
 
-    def get_variants(self) -> list[dict]:
+    def get_variants(self) -> list:
         """Fetch annotated variants; bridge legacy schema to the new column names."""
         with sqlite3.connect(self.sqlite_path) as con:
             cur = con.cursor()
@@ -115,14 +160,18 @@ class VariantSource:
                 'vep_csq__strand': extra_vcf_info['CSQ_STRAND'][i],
                 'vep_csq__codons': extra_vcf_info['CSQ_Codons'][i],
             }
-            annotation['vep_csq__refseq'] = extra_vcf_info['CSQ_MANE_SELECT'][i] if extra_vcf_info['CSQ_MANE_SELECT'][i] else None
+            annotation['vep_csq__refseq'] = (
+                extra_vcf_info['CSQ_MANE_SELECT'][i] if extra_vcf_info['CSQ_MANE_SELECT'][i] else None
+            )
         annotation['vep_omim_pheno__inher'] = self._inher_from_omim_pheno(variant_data['vep_omim_pheno__pheno'])
         for col in ['filter', 'zygosity', 'ad', 'dp']:
             annotation[f'tagsampler_new__{col}'] = variant_data[f'vevatacmg_postaggregator__{col}']
         annotation['tagsampler_new__samples'] = variant_data['vevatacmg_postaggregator__sample']
         for col in ['id', 'sig']:
             annotation[f'clinvar_new__{col}'] = variant_data[f'clinvar__{col}']
-        annotation['clinvar_new__sig_subs'] = annotation['clinvar_new__equivalents'] = annotation['clinvar_new__alternatives'] = None
+        annotation['clinvar_new__sig_subs'] = annotation['clinvar_new__equivalents'] = annotation[
+            'clinvar_new__alternatives'
+        ] = None
         return annotation
 
     def _extra_vcf_info(self, variant_data: dict) -> dict:
@@ -131,8 +180,8 @@ class VariantSource:
         transformed = {'nblocks': nblocks}
         for key, value in variant_data.items():
             if key.startswith('extra_vcf_info__CSQ'):
-                value = ['']*nblocks if value is None else value.split(';')
-            transformed[key.lstrip('extra_vcf_info__')] = value
+                value = [''] * nblocks if value is None else value.split(';')
+            transformed[key.lstrip('extra_vcf_info__')] = value  # noqa: B005 — inherited bug, docs/issues/clinreport/011
         return transformed
 
     def _inher_from_omim_pheno(self, phenotype: str) -> str | None:

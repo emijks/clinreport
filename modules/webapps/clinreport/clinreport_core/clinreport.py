@@ -1,51 +1,28 @@
-from datetime import date
+from __future__ import annotations
+
 from pathlib import Path
 
-import pandas as pd
-from docxtpl import DocxTemplate, RichText
+from docxtpl import DocxTemplate
 
-from database import VariantSource
-from process import SampleProcessor
+from .database import VariantSource
+from .process import SampleProcessor
+from .templates import BUILTIN, BUILTIN_DIR, richtextify
 
-
-TEMPLATES_DIR = Path(__file__).resolve().parent / 'templates'
-TEMPLATES = {
-    'DZM': TEMPLATES_DIR / 'DZM.docx',
-    'FND': TEMPLATES_DIR / 'FND.docx',
-    '10x': TEMPLATES_DIR / '10x.docx',
-}
-
-_RICHTEXT_FIELDS = ('variation', 'zygosity')
+TEMPLATES_DIR = BUILTIN_DIR
+TEMPLATES = {tid: BUILTIN_DIR / f'{tid}.docx' for tid, _title, _kind in BUILTIN}
+DEFAULT_TEMPLATES = tuple(tid for tid, _title, kind in BUILTIN if kind == 'default')
 
 
-def _str_to_richtext(text: str) -> RichText:
-    rt = RichText()
-    for i, line in enumerate(str(text).split('\n')):
-        rt.add(line if i == 0 else '\n' + line)
-    return rt
-
-
-def _richtextify(context: dict) -> dict:
-    """Return a render-ready copy with the line-break fields upgraded to RichText."""
-    rendered = dict(context)
-    for key, value in context.items():
-        if isinstance(value, list):  # variant-row lists
-            rendered[key] = [_richtextify_row(row) for row in value]
-    return rendered
-
-
-def _richtextify_row(row: dict) -> dict:
-    row = dict(row)
-    for field in _RICHTEXT_FIELDS:
-        if isinstance(row.get(field), str):
-            row[field] = _str_to_richtext(row[field])
-    return row
+def render_context(context: dict, template='DZM') -> DocxTemplate:
+    """Render a (possibly GUI-edited) context with a built-in template id ('DZM' | 'FND' | '10x') or a .docx path."""
+    path = TEMPLATES[template] if template in TEMPLATES else Path(template)
+    document = DocxTemplate(str(path))
+    document.render(richtextify(context))
+    return document
 
 
 class ClinReport:
-    """
-    Session for one OpenCRAVAT SQLite, shared by the CLI (main.py) and the GUI.
-    """
+    """Session for one OpenCRAVAT SQLite."""
 
     def __init__(self, source, *, target_sample=None, clinician=None, ru_annotations=None):
         self.source = source if isinstance(source, VariantSource) else VariantSource(source)
@@ -79,7 +56,4 @@ class ClinReport:
         return processor.build_default_context()
 
     def render(self, context: dict, template='DZM') -> DocxTemplate:
-        """Render a (possibly GUI-edited) context. template: 'DZM' | 'FND' | '10x'."""
-        document = DocxTemplate(str(TEMPLATES[template]))
-        document.render(_richtextify(context))
-        return document
+        return render_context(context, template)

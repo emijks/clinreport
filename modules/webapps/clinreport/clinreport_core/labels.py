@@ -1,9 +1,10 @@
-"""Display labels and pure context<->tableview mapping for the GUI.
+"""Display labels, the review-page layout and the Postgres payload mapping.
 
-Variant-row context dicts use machine keys (gene, variation, ...); the UI shows
-Russian column labels and edits plain strings. These helpers translate between
-the two with no Tk dependency, so they are unit-testable headless.
+Ported from clinreport/ui/labels.py (the Tk-free part). The review page gets
+LAYOUTS from the server, so column titles live only here.
 """
+
+from __future__ import annotations
 
 from datetime import date
 
@@ -18,7 +19,6 @@ FIELD_LABELS = {
     'pathogenicity': 'Патогенность',
     'type': 'Тип',
 }
-LABEL_TO_FIELD = {label: field for field, label in FIELD_LABELS.items()}
 
 SNV_FIELDS = ('gene', 'disease', 'variation', 'zygosity', 'frequency', 'coverage')
 CARRIER_FIELDS = SNV_FIELDS + ('pathogenicity',)
@@ -58,43 +58,61 @@ TEN_X_COMMON_FIELDS = (
 )
 
 
-def variant_rows_to_values(rows, fields):
-    """Context variant rows -> list of ordered value lists for a Tableview."""
-    return [[str(row.get(field, '')) for field in fields] for row in rows]
+def _layout(common_fields, tables, field_labels, *, similar, upload, templates):
+    return {
+        'common': [{'section': s, 'key': k, 'label': label} for s, k, label in common_fields],
+        'tables': [
+            {
+                'key': key,
+                'title': title,
+                'columns': [{'field': f, 'label': field_labels[f]} for f in fields],
+            }
+            for key, title, fields in tables
+        ],
+        'similar': similar,
+        'upload': upload,
+        'templates': templates,
+    }
 
 
-def apply_variant_edits(rows, fields, edited_values):
-    """Write edited Tableview values back into the context rows, in place."""
-    for row, values in zip(rows, edited_values):
-        for field, value in zip(fields, values):
-            row[field] = value
-
-
-def common_values(context, common_fields=COMMON_FIELDS):
-    """Single-row patient/tech values for the common Tableview."""
-    return [[str(context[section][key]) for section, key, _ in common_fields]]
-
-
-def apply_common_edits(context, edited_row, common_fields=COMMON_FIELDS):
-    """Write edited common-table values back into the context, in place."""
-    for (section, key, _), value in zip(common_fields, edited_row):
-        context[section][key] = value
+LAYOUTS = {
+    'default': _layout(
+        COMMON_FIELDS,
+        DEFAULT_VARIANT_TABLES,
+        FIELD_LABELS,
+        similar=True,
+        upload=True,
+        templates=['DZM', 'FND'],
+    ),
+    '10x': _layout(
+        TEN_X_COMMON_FIELDS,
+        (('main_variants', 'Результаты исследования', MAIN_VARIANT_FIELDS),),
+        MAIN_VARIANT_LABELS,
+        similar=False,
+        upload=False,
+        templates=['10x'],
+    ),
+}
 
 
 # --- Postgres ReportedVariants payload (context dict -> records) ---
-# Patient/common columns pulled from the context (section, key, DB column).
 PAYLOAD_COMMON = (
     ('patient', 'id', 'Номер образца'),
     ('patient', 'sex', 'Пол пациента'),
     ('patient', 'age', 'Возраст пациента'),
     ('patient', 'diagnosis', 'Предварительный диагноз'),
 )
-# Variant columns, in the old payload's order; each maps through FIELD_LABELS.
 PAYLOAD_VARIANT_FIELDS = (
-    'gene', 'disease', 'variation', 'zygosity', 'frequency',
-    'coverage', 'manual_criteria', 'pathogenicity', 'type',
+    'gene',
+    'disease',
+    'variation',
+    'zygosity',
+    'frequency',
+    'coverage',
+    'manual_criteria',
+    'pathogenicity',
+    'type',
 )
-# Variant sections of a default-report context that get uploaded.
 PAYLOAD_SECTIONS = ('p_variants', 'lp_variants', 'vus_variants', 'sf_variants', 'carrier_variants')
 
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from utils import float2percent, predict_insilico
+from .utils import float2percent, predict_insilico
 
 
 class SampleProcessor:
