@@ -1,0 +1,41 @@
+# Changelog
+
+All notable changes to ClinReport. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
+[Semantic Versioning](https://semver.org/). The section of a version is used as its GitHub release notes.
+
+## [Unreleased]
+
+## [3.0.0] - unreleased
+
+ClinReport becomes an OpenCRAVAT extension with a desktop app around it. Reports are made in OpenCRAVAT itself: mark
+variants in the Note column, open the review window from the Summary tab, edit, save the `.docx`.
+
+### Added
+
+- **Desktop app for Windows and macOS** with OpenCRAVAT 3.2.3 and Python 3.13 inside: nothing else to install, no
+  administrator rights. A control window shows whether OpenCRAVAT is running, opens results, manages templates and
+  settings and keeps a log.
+- **Review window in OpenCRAVAT** (webapp `clinreport` + Summary-tab widget `wgclinreport`): process standard or LPWGS,
+  edit every section, pick the template, save.
+- **The lab's own report templates** («Шаблоны»): add a `.docx`, checked against an example report.
+- **Updates from inside the app**: «обновить до X» downloads and installs the new version on Windows (settings, templates
+  and jobs are kept); macOS opens the release page. Pre-releases only when enabled in Настройки.
+- **Extension installer** (`install_extension.py`) for an existing OpenCRAVAT, and a release zip with it.
+- **Command line**: modes `default`, `lpwgs`, `10x`, any template, `--list-templates`.
+- Builds for macOS 10.15+ (Intel) and 11+ (Apple Silicon); CI on Linux, Windows and macOS for every push.
+
+### Changed
+
+- The installer closes a running ClinReport itself instead of listing its "Python" processes, and says whether it
+  installs or updates (from which version).
+- Settings and templates are stored in the OpenCRAVAT conf dir / the user's data folder instead of next to the program.
+- One version number for the app and its OpenCRAVAT modules.
+
+### Removed
+
+- The Tk desktop app (`app.py`, `ui/`) and its PyInstaller build; `config.json` next to the executable.
+
+## [2.2] - 2026-07-26
+
+Last release of the Tk desktop app. Earlier versions: 2.1 (2026-04-07), 2.0 (2025-06-03), 1.1 (2025-04-28),
+1.0 (2025-04-27); see the git history.

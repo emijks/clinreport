@@ -84,3 +84,15 @@ def test_dev_environment_uses_the_pinned_stack(build):
     minor = '.'.join(build.STACK['python'].split('.')[:2])
     ci = (ROOT / '.github' / 'workflows' / 'ci.yml').read_text(encoding='utf-8')
     assert ci.count('python-version: "') == ci.count(f'python-version: "{minor}"') > 0
+
+
+def test_module_versions_follow_the_product_version():
+    """One version number for the product (pyproject.toml) and both OpenCRAVAT modules (docs/decisions)."""
+    import re
+    import tomllib
+
+    product = tomllib.loads((ROOT / 'pyproject.toml').read_text(encoding='utf-8'))['project']['version']
+    for yml in ('modules/webapps/clinreport/clinreport.yml', 'modules/webviewerwidgets/wgclinreport/wgclinreport.yml'):
+        text = (ROOT / yml).read_text(encoding='utf-8')
+        assert re.search(r'^version: (\S+)$', text, re.M).group(1) == product, yml
+        assert f'  {product}:' in text, f'{yml}: release_note for {product} missing'

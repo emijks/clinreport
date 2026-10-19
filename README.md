@@ -1,81 +1,60 @@
 # ClinReport
 
-Generate clinical report from OpenCRAVAT SQLite
+Clinical reports (`.docx`) from [OpenCRAVAT](https://opencravat.org) results. The clinician marks variants in
+OpenCRAVAT's **Note** column, opens the review window from the result's **Summary** tab, checks and edits the report and
+saves it from a Word template — the lab's standard ones (DZM, FND, 10x for LPWGS) or its own.
 
-## Usage
+One code base, three ways to run it:
 
-### Prepare SQLite
+| | For whom | What you get |
+|---|---|---|
+| **Desktop app** | a clinician's own computer, Windows or macOS | an installer with OpenCRAVAT, Python and ClinReport inside; nothing else to install, no administrator rights |
+| **Extension** | an existing OpenCRAVAT installation (e.g. a lab server) | `install_extension.py` adds the ClinReport modules to it |
+| **Command line** | batch jobs, scripts | `launchers/cli/cli.py` writes the same documents without the GUI |
 
-Mark variants to reflect in the report:
-1. open SQLite in OpenCRAVAT GUI;
-2. mark variants of interest in `Note` field with the corresponding number:
-    - `1`: "Патогенный";
-    - `2`: "Вероятно патогенный";
-    - `3`: "Вариант с неизвестной клинической значимостью";
-    - `7`: "Вариант, не связанный с основным диагнозом";
-    - `8`: "Носительство";
+## Install
 
-3. SQLite with changes (with marked variants) is saved in the `jobs` folder of OpenCRAVAT.
+**Desktop app** — download from [Releases](https://github.com/emijks/clinreport/releases):
 
-### Run ClinReport
+- **Windows 10/11:** `ClinReport-<version>-win-x64-setup.exe`. If SmartScreen warns about an unknown publisher:
+  «Подробнее» → «Выполнить в любом случае» (the app is not code-signed).
+- **macOS:** `ClinReport-<version>-macos-arm64.dmg` (Apple Silicon, macOS 11+) or `…-macos-x64.dmg` (Intel, macOS 10.15+).
+  Drag ClinReport to Applications; on the first start right-click it → «Открыть» → «Открыть» (not notarised). If macOS
+  says the app is damaged: `xattr -cr /Applications/ClinReport.app`.
 
-#### Using the graphical application (GUI)
+**Update:** ClinReport shows «обновить до X» when a new version is out (Windows: one click; macOS: opens the release page),
+or install the new version over the old one. Settings, your own templates and OpenCRAVAT jobs are kept — they live in
+`%LOCALAPPDATA%\ClinReport` (Windows) or `~/Library/Application Support/ClinReport` (macOS), never in the program folder.
 
-1. Launch the application. (_If you are running from source:_ `python app.py`)
-2. In the main window, click **`Выбрать файл`**.
-3. In the file selection dialog, choose an OpenCRAVAT SQLite.
-4. In the **Processing** window:
-   - select the target sample from the drop-down list (for Duo/Trio);
-   - click **`Обработать`** for a standard report, or **`Обработать как LPWGS`** for a 10x report.
-5. A window will open for each sample found in the database. You can review and edit the available fields.
-6. Click **`Сохранить как...`**, choose the destination folder and filename, and save the generated report.
-
-#### Using the command-line interface (CLI)
+**Extension** — with the Python that runs your OpenCRAVAT (≥ 2.2.9; tested with 3.2.3):
 
 ```text
-usage: cli.py [-h] [-t TARGET_SAMPLE] [-r {default,10x}]
-              [--template {DZM,FND}] [-o OUTPUT_DIR]
-              [--no-ru-annotations]
-              sqlite
-
-positional arguments:
-  sqlite                Path to OpenCRAVAT SQLite
-
-options:
-  -h, --help            Show this help message and exit
-  -t, --target-sample TARGET_SAMPLE
-                        Main sample in Duo/Trio
-  -r, --report {default,10x}
-                        Report type to generate
-  --template {DZM,FND}  Template for default reports
-  -o, --output-dir OUTPUT_DIR
-                        Directory where .docx files will be saved
-  --no-ru-annotations   Skip fetching Russian OMIM/secondary annotation overrides
+<opencravat python> install_extension.py [--with-db]      # from clinreport-extension-<version>.zip, or packaging/ here
 ```
 
+Run it again to update; `--uninstall` removes it. Restart `oc gui` afterwards.
 
-## Setup
+## Use
 
-### Requirements
+1. Open the result in OpenCRAVAT and mark variants in **Note**: `1` патогенный, `2` вероятно патогенный, `3` ВНЗ,
+   `7` не связан с основным диагнозом, `8` носительство.
+2. **Summary** tab → **«Открыть окно заключения»** (desktop app: also «Заключение» next to a recent result).
+3. Pick the target sample → **«Обработать»** or **«Обработать как LPWGS»**, review the tabs, pick the template,
+   **«Сохранить как…»**.
 
-- python3
-- Install dependencies: `pip install -r requirements.txt`
+Step-by-step guides in Russian: [desktop app](docs/guides/desktop-app.md), [report templates](docs/guides/templates.md),
+[extension](docs/guides/extension.md), [command line](docs/guides/cli.md).
 
-### Build the Windows/MacOS application
+## Develop
 
+```text
+pip install -r requirements-dev.txt          # Python 3.13: OpenCRAVAT 3.2.3, the app's dependencies, pytest, ruff
+python -m pytest                             # unit, route, CLI, launcher and packaging tests
+ruff check .
+python packaging/build.py --package          # desktop app + installer for this OS → packaging/dist/
 ```
-pyinstaller \
-  --windowed \
-  --add-data "config.json:." \
-  --add-data "templates:templates" \
-  --collect-all docx \
-  --name clinreport \
-  --noconfirm \
-  app.py
-```
 
-### Tips
-
-On macOS, if you encounter errors such as "The application is damaged" or "cannot be opened", run:
-
-`xattr -cr /PATH/TO/clinreport.app`
+Start with [AGENTS.md](AGENTS.md) (also the best overview for people), then [docs/](docs/README.md): architecture,
+development, reference and the [decisions](docs/decisions/README.md) behind the design. Every push runs CI on Linux,
+Windows and macOS; a tag `vX.Y.Z` publishes a release ([docs/development/releasing.md](docs/development/releasing.md)).
+Changes are listed in [CHANGELOG.md](CHANGELOG.md).
