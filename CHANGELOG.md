@@ -13,8 +13,10 @@ All notable changes to ClinReport. Format: [Keep a Changelog](https://keepachang
 
 ### Fixed
 
-- **Empty ClinReport window** on macOS when another program used port 42001 (on Windows the window could show that
-  program's page instead). The window no longer needs a port at all.
+- **Empty ClinReport window on macOS older than 11.3** (e.g. 10.15 Catalina): the window library asked WebKit for a
+  feature these systems lack, and the page was never loaded.
+- The window could show another program's page on Windows (or stay empty on macOS) when that program used port 42001.
+  The window no longer needs a port at all.
 - The window works on macOS 10.15 with the Safari it shipped with (13).
 
 ## [3.0.0] - unreleased

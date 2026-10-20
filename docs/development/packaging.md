@@ -112,6 +112,11 @@ So the page must not load files (no `src`/`href` to `ui/`). It must run on Safar
 syntax and APIs, and the inline script in `index.html` supplies `replaceChildren`; `tests/desktop/test_window_page.py`
 checks both.
 
+On macOS < 11.3 pywebview 6.2.1 would never load the page at all: its navigation handler calls
+`WKNavigationAction.shouldPerformDownload` (macOS 11.3+), the call raises and WebKit never gets an answer.
+`webview_compat.py` supplies the method there before the window is created. No CI runner has such a macOS — after a
+pywebview bump, re-read `webview/platforms/cocoa.py` for WebKit calls newer than 10.15 on the page-load path.
+
 ### Logs
 
 `sessionlog.py` writes `logs/launcher.log` (INFO, all sessions, rotated) and `logs/sessions/session-<id>.log` (one launch

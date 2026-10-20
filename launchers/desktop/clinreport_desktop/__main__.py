@@ -224,6 +224,12 @@ def run_window(app):
     logging.getLogger('pywebview').handlers.clear()
     logging.getLogger('pywebview').setLevel(logging.DEBUG)
     if sys.platform == 'darwin':
+        from . import webview_compat
+
+        try:
+            webview_compat.supply_should_perform_download()
+        except Exception:
+            log.exception('cannot patch WebKit for pywebview')
         try:
             sessionlog.watch_webkit()
         except Exception:
