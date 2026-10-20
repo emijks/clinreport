@@ -468,6 +468,7 @@ function init() {
     const running = last && last.server.state === 'running';
     if (running !== wasRunning) { wasRunning = running; loadRecent(); }
   }, 1000);
+  window.clinreportLog('ready', 'init done');
 }
 
 if (window.pywebview && window.pywebview.api) init();

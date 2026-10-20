@@ -43,6 +43,9 @@ def conf_dir() -> Path:
 
 
 def logs_dir() -> Path:
+    """macOS: ~/Library/Logs/ClinReport, where Console.app lists them; elsewhere (and with CLINREPORT_DATA_DIR) data/logs."""
+    if sys.platform == 'darwin' and not os.environ.get('CLINREPORT_DATA_DIR'):
+        return Path.home() / 'Library' / 'Logs' / APP_NAME
     return data_dir() / 'logs'
 
 

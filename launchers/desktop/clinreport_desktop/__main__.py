@@ -3,7 +3,6 @@
 import argparse
 import json
 import logging
-import logging.handlers
 import os
 import sys
 import threading
@@ -11,26 +10,14 @@ import time
 import webbrowser
 from pathlib import Path
 
-from . import config, instance, paths, updates
+from . import config, instance, paths, sessionlog, updates
 from .server import Server, module_status, versions
 
 log = logging.getLogger('clinreport')
+ui_log = logging.getLogger('clinreport.ui')
 UI_DIR = Path(__file__).resolve().parent / 'ui'
-
-
-def setup_logging():
-    paths.logs_dir().mkdir(parents=True, exist_ok=True)
-    handler = logging.handlers.RotatingFileHandler(
-        paths.logs_dir() / 'launcher.log', maxBytes=1_000_000, backupCount=3, encoding='utf-8'
-    )
-    handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(message)s', '%Y-%m-%d %H:%M:%S'))
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
-    root.addHandler(handler)
-    if sys.stderr is not None:  # not under pythonw.exe
-        console = logging.StreamHandler()
-        console.setFormatter(logging.Formatter('%(asctime)s %(message)s', '%H:%M:%S'))
-        root.addHandler(console)
+UI_TIMEOUT = 20  # seconds for the window's page to start before the log says so
+UI_LOG_MAX = 200  # messages the page may log per session (a failing timer must not fill the disk)
 
 
 class App:
@@ -44,6 +31,9 @@ class App:
         self.server = Server()
         self.server.ready_callbacks.append(self._on_ready)
         self._modules_cache = (0.0, [])
+        self.page_loaded = threading.Event()  # pywebview finished loading the window's page
+        self.ui_ready = threading.Event()  # app.js ran its init()
+        self._ui_logged = 0
 
     def modules(self):
         at, cached = self._modules_cache
@@ -160,6 +150,34 @@ class App:
         log.info('closing')
         self.server.stop()
 
+    # --- the window's page ---
+
+    def on_page_loaded(self):
+        self.page_loaded.set()
+        log.info('window page loaded: %s', getattr(self.window, 'real_url', None))
+
+    def client_log(self, level, message):
+        """A message from the window's JavaScript (ui/index.html reports errors; 'ready' = init() ran)."""
+        self._ui_logged += 1
+        if self._ui_logged > UI_LOG_MAX:
+            return
+        if self._ui_logged == UI_LOG_MAX:
+            ui_log.warning('%s messages from the page; ignoring the rest of this session', UI_LOG_MAX)
+            return
+        if level == 'ready':
+            self.ui_ready.set()
+        ui_log.log(logging.ERROR if level == 'error' else logging.INFO, '%s: %s', level, str(message)[:4000])
+
+    def watch_ui(self, timeout=UI_TIMEOUT):
+        """Say so in the log when the window's page has not started: the window then looks empty."""
+        if self.ui_ready.wait(timeout):
+            return
+        log.warning(
+            'the window page has not started in %s s (page loaded: %s); the window is probably empty',
+            timeout,
+            self.page_loaded.is_set(),
+        )
+
 
 def run_headless(app):
     """No window: CI, servers, Linux without a desktop. Ctrl+C stops."""
@@ -185,6 +203,15 @@ def run_window(app):
 
     from .api import Api
 
+    # pywebview prints to stderr itself and resets its level on import; its records reach our handlers through the root.
+    logging.getLogger('pywebview').handlers.clear()
+    logging.getLogger('pywebview').setLevel(logging.DEBUG)
+    if sys.platform == 'darwin':
+        try:
+            sessionlog.watch_webkit()
+        except Exception:
+            log.exception('cannot watch WebKit page loads')
+
     app.window = webview.create_window(
         'ClinReport',
         url=str(UI_DIR / 'index.html'),
@@ -197,8 +224,10 @@ def run_window(app):
         background_color='#F4F6F9',
     )
     app.window.events.closed += app.shutdown
+    app.window.events.loaded += app.on_page_loaded
 
     def after_start():
+        threading.Thread(target=app.watch_ui, daemon=True, name='ui-watch').start()
         app.start_server()
         threading.Thread(target=app.check_updates, daemon=True).start()
         if app.args.selftest:
@@ -216,7 +245,7 @@ def run_window(app):
 def selftest(app):
     """Open the real window, wait for the server and the UI, record what the window shows, close."""
     out = Path(app.args.selftest)
-    report = {'ok': False}
+    report = {'ok': False, 'session_log': str(sessionlog.session_log())}
     try:
         deadline = time.time() + 200
         while time.time() < deadline and app.server.state not in ('running', 'failed'):
@@ -225,7 +254,11 @@ def selftest(app):
         time.sleep(3)  # two status polls of the UI
         report['ui_text'] = app.window.evaluate_js('document.body.innerText')
         report['ui_state'] = app.window.evaluate_js('window.__clinreportState || null')
-        report['ok'] = app.server.state == 'running' and 'работает' in (report['ui_text'] or '').lower()
+        report['page_loaded'] = app.page_loaded.is_set()
+        report['ui_ready'] = app.ui_ready.is_set()
+        report['ok'] = (
+            app.server.state == 'running' and app.ui_ready.is_set() and 'работает' in (report['ui_text'] or '').lower()
+        )
     except Exception as e:
         report['error'] = repr(e)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
@@ -268,7 +301,7 @@ def main(argv=None):
         args.result = os.path.abspath(args.result)
 
     paths.data_dir().mkdir(parents=True, exist_ok=True)
-    setup_logging()
+    sessionlog.setup()
     if args.quit:
         return quit_running()
     if not args.selftest and instance.hand_over(args.result or ''):
@@ -287,6 +320,7 @@ def main(argv=None):
         app.versions['python'],
         app.versions['platform'],
     )
+    sessionlog.log_environment(app.versions)
     instance.hold_mutex()
     listener = instance.Listener(app.activate, app.quit)
     try:

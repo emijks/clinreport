@@ -107,7 +107,8 @@ These hold everywhere; several are things the code deliberately does **not** do,
 └── updates\                                downloaded installers (deleted on the next start)
 ```
 
-macOS: the program is `ClinReport.app/Contents/Resources/ClinReport`, the data `~/Library/Application Support/ClinReport`.
+macOS: the program is `ClinReport.app/Contents/Resources/ClinReport`, the data `~/Library/Application Support/ClinReport`,
+the logs `~/Library/Logs/ClinReport`.
 
 On start the launcher: hands a second start over to the running window; stops OpenCRAVAT processes left by a crash;
 writes OpenCRAVAT's system conf for this user (so another OpenCRAVAT on the computer is untouched); syncs the bundled

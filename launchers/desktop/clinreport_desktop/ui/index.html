@@ -4,6 +4,44 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ClinReport</title>
+  <script>
+  // Sends the page's errors to the launcher's session log (Api.client_log); queued until pywebview is ready.
+  // Old JavaScript on purpose: it must run on WebKit versions too old for app.js, to report exactly that.
+  (function () {
+    var queue = [];
+    function send(level, message) {
+      var api = window.pywebview && window.pywebview.api;
+      if (!(api && api.client_log)) {
+        if (queue.length < 50) queue.push([level, message]);
+        return;
+      }
+      try {
+        var sent = api.client_log(level, String(message));
+        if (sent && sent.catch) sent.catch(function () {});
+      } catch (ignored) {}
+    }
+    window.clinreportLog = send;
+    window.addEventListener('error', function (e) {
+      var target = e.target;
+      if (target && target !== window && (target.src || target.href)) {
+        send('error', 'cannot load ' + (target.src || target.href));
+        return;
+      }
+      send('error', (e.message || 'error') + ' at ' + (e.filename || '?') + ':' + (e.lineno || 0) + ':' + (e.colno || 0)
+        + (e.error && e.error.stack ? '\n' + e.error.stack : ''));
+    }, true);
+    window.addEventListener('unhandledrejection', function (e) {
+      var reason = e.reason;
+      send('error', 'unhandled rejection: ' + (reason && reason.stack ? reason.stack : reason));
+    });
+    window.addEventListener('pywebviewready', function () {
+      var pending = queue;
+      queue = [];
+      send('info', 'bridge ready; ' + navigator.userAgent);
+      for (var i = 0; i < pending.length; i++) send(pending[i][0], pending[i][1]);
+    });
+  })();
+  </script>
   <link rel="stylesheet" href="app.css">
 </head>
 <body>

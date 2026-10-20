@@ -18,7 +18,7 @@ import urllib.parse
 import webbrowser
 from pathlib import Path
 
-from . import autostart, config, paths
+from . import autostart, config, paths, sessionlog
 
 log = logging.getLogger('clinreport.api')
 NOTE_CODES = ('1', '2', '3', '7', '8')
@@ -305,6 +305,11 @@ class Api:
     # --- log ---
 
     @_safe
+    def client_log(self, level, message):
+        self._app.client_log(level, message)
+        return {'ok': True}
+
+    @_safe
     def log(self):
         return {'lines': _tail(paths.logs_dir() / 'launcher.log', 300), 'server': self._app.server.log_tail(80)}
 
@@ -322,6 +327,12 @@ class Api:
             '',
             f'data: {paths.data_dir()}',
             f'bundle: {paths.bundle_dir()}',
+            f'session log: {sessionlog.session_log()}',
+            *(
+                f'{name}: {value}'
+                for name, value in sessionlog.environment({})  # versions are listed above
+                if name not in ('bundle', 'data')
+            ),
             f'server: {app.server.snapshot()}',
             f'modules: {app.modules()}',
             f'ru: {app.ru}',

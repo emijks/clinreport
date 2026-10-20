@@ -131,6 +131,7 @@ jobs:
         run: |
           "$PY" -I -m clinreport_desktop --selftest "$RUNNER_TEMP/selftest.json"
           cat "$RUNNER_TEMP/selftest.json"
+          cat "$CLINREPORT_DATA_DIR"/logs/sessions/*.log || true
           "$PY" -I -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1], encoding='utf-8'))['ok'] else 1)" "$RUNNER_TEMP/selftest.json"
       - name: Package
         run: python packaging/build.py --version "$VERSION" --package-only

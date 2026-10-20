@@ -5,6 +5,12 @@ All notable changes to ClinReport. Format: [Keep a Changelog](https://keepachang
 
 ## [Unreleased]
 
+### Added
+
+- **A log file for every launch** of the desktop app (`logs/sessions`, the last 20): system and WebKit/WebView2 versions,
+  errors of the window page and of background tasks, crashes, and output that was lost when the app was started from
+  Finder. On macOS the logs moved to `~/Library/Logs/ClinReport` (visible in Console).
+
 ## [3.0.0] - unreleased
 
 ClinReport becomes an OpenCRAVAT extension with a desktop app around it. Reports are made in OpenCRAVAT itself: mark

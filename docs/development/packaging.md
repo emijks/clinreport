@@ -105,6 +105,18 @@ makes Celery use the `solo` pool (on all platforms, for identical behaviour). No
    ([ADR 0009](../decisions/0009-in-app-updates-from-github-releases.md)). Closing the window stops the process tree.
 
 The window (`ui/`: plain HTML/CSS/JS in pywebview — WebView2 on Windows, WebKit on macOS) talks only to `api.py`.
+
+### Logs
+
+`sessionlog.py` writes `logs/launcher.log` (INFO, all sessions, rotated) and `logs/sessions/session-<id>.log` (one launch
+at DEBUG for `clinreport.*` and `pywebview`; the newest 20 kept). macOS keeps `logs/` in `~/Library/Logs/ClinReport`
+unless `CLINREPORT_DATA_DIR` is set. A session log starts with the machine (OS, WebKit/Safari or WebView2, executable,
+App Translocation) and also gets what is otherwise lost without a terminal: uncaught exceptions in any thread, native
+crash dumps (`faulthandler`, not on Windows: .NET's handled exceptions would flood it), stdout/stderr when they go
+nowhere (Finder, `pythonw.exe`), failed page loads in WebKit (pywebview ignores them, and shows the web view only after a
+load finishes — a failed load leaves an empty window), and the page's own errors: the inline script at the top of
+`ui/index.html` (old JavaScript on purpose) sends them to `Api.client_log`; `app.js` reports `ready` after `init()`, and
+the launcher logs a warning if that has not come 20 s after the window opened. `--selftest` requires `ready`.
 Templates and report settings go through ClinReport's own `service` functions in-process (`CLINREPORT_CONF_DIR` = the
 user's conf dir, `CLINREPORT_EDITION=desktop`), so the window and the browser page agree.
 
