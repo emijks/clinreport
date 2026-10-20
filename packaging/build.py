@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import time
 import tomllib
 import urllib.request
 from pathlib import Path
@@ -357,8 +358,23 @@ def package_macos(app: Path, version: str, out: Path) -> Path:
     staging.mkdir()
     shutil.move(str(bundle), str(staging / 'ClinReport.app'))
     os.symlink('/Applications', staging / 'Applications')
-    run('hdiutil', 'create', '-volname', 'ClinReport', '-srcfolder', staging, '-ov', '-format', 'UDZO', dmg)
+    create_dmg(staging, dmg)
     return dmg
+
+
+def create_dmg(staging: Path, dmg: Path, attempts=5, pause=10):
+    """hdiutil fails now and then with "create failed - Resource busy" (GitHub's macOS runners: Spotlight or a scanner
+    still reading the fresh files); flushing the disk first and trying again after a pause gets through."""
+    run('sync')
+    for attempt in range(1, attempts + 1):
+        try:
+            run('hdiutil', 'create', '-volname', 'ClinReport', '-srcfolder', staging, '-ov', '-format', 'UDZO', dmg)
+            return
+        except subprocess.CalledProcessError:
+            if attempt == attempts:
+                raise
+            print(f'hdiutil failed (attempt {attempt} of {attempts}); trying again in {pause} s', flush=True)
+            time.sleep(pause)
 
 
 def package_linux(app: Path, version: str, out: Path) -> Path:

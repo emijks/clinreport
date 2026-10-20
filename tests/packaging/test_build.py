@@ -96,3 +96,21 @@ def test_module_versions_follow_the_product_version():
         text = (ROOT / yml).read_text(encoding='utf-8')
         assert re.search(r'^version: (\S+)$', text, re.M).group(1) == product, yml
         assert f'  {product}:' in text, f'{yml}: release_note for {product} missing'
+
+
+@pytest.mark.parametrize('failures, ok', [(0, True), (2, True), (5, False)])
+def test_dmg_creation_retries_resource_busy(build, monkeypatch, tmp_path, failures, ok):
+    calls = []
+
+    def run(*args):
+        calls.append(args[0])
+        if args[0] == 'hdiutil' and calls.count('hdiutil') <= failures:
+            raise build.subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr(build, 'run', run)
+    if ok:
+        build.create_dmg(tmp_path, tmp_path / 'x.dmg', attempts=5, pause=0)
+    else:
+        with pytest.raises(build.subprocess.CalledProcessError):
+            build.create_dmg(tmp_path, tmp_path / 'x.dmg', attempts=5, pause=0)
+    assert calls[0] == 'sync' and calls.count('hdiutil') == min(failures + 1, 5)
