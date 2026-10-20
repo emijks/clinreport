@@ -63,7 +63,7 @@ the place the team works in. Until then the files are the source of truth. When 
 
 | # | Title | Priority | Status |
 |---|---|---|---|
-| [007](desktop/007-empty-window-macos.md) | The control window is empty on an old Mac | P1 | open — logging done, fix pending |
+| [007](desktop/007-empty-window-macos.md) | The control window is empty on an old Mac | P1 | fixed — to confirm on the Mac |
 | [002](desktop/002-code-signing.md) | Desktop app is not code-signed | P2 | open (unsigned for 3.0) |
 | [003](desktop/003-lab-modules-tab.md) | The lab's own OpenCRAVAT modules cannot be added in the app | P3 | open — deferred |
 | [004](desktop/004-install-into-existing-opencravat.md) | Installing into an existing OpenCRAVAT is manual | P3 | open — deferred |

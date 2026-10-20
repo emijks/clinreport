@@ -8,6 +8,17 @@
   // Sends the page's errors to the launcher's session log (Api.client_log); queued until pywebview is ready.
   // Old JavaScript on purpose: it must run on WebKit versions too old for app.js, to report exactly that.
   (function () {
+    // Safari < 14 (macOS 10.15 without Safari updates) has no replaceChildren, which app.js uses throughout.
+    if (window.Element && !Element.prototype.replaceChildren) {
+      Element.prototype.replaceChildren = function () {
+        while (this.lastChild) this.removeChild(this.lastChild);
+        for (var i = 0; i < arguments.length; i++) {
+          var node = arguments[i];
+          this.appendChild(typeof node === 'string' ? document.createTextNode(node) : node);
+        }
+      };
+    }
+
     var queue = [];
     function send(level, message) {
       var api = window.pywebview && window.pywebview.api;

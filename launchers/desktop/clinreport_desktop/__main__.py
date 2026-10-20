@@ -154,7 +154,7 @@ class App:
 
     def on_page_loaded(self):
         self.page_loaded.set()
-        log.info('window page loaded: %s', getattr(self.window, 'real_url', None))
+        log.info('window page loaded')
 
     def client_log(self, level, message):
         """A message from the window's JavaScript (ui/index.html reports errors; 'ready' = init() ran)."""
@@ -198,6 +198,23 @@ def run_headless(app):
     return 0
 
 
+def window_page() -> str:
+    """ui/index.html with app.css and app.js inlined. Given to pywebview as html, the page needs no HTTP server: pywebview's
+    listens on the fixed port 42001, which every pywebview app shares; when it is taken, the window stays empty on macOS
+    and shows another app's page on Windows (docs/issues/desktop/007)."""
+    page = (UI_DIR / 'index.html').read_text(encoding='utf-8')
+    css = (UI_DIR / 'app.css').read_text(encoding='utf-8')
+    js = (UI_DIR / 'app.js').read_text(encoding='utf-8')
+    for tag, inline in (
+        ('<link rel="stylesheet" href="app.css">', f'<style>\n{css}</style>'),
+        ('<script src="app.js"></script>', f'<script>\n{js}</script>'),
+    ):
+        if page.count(tag) != 1:
+            raise RuntimeError(f'ui/index.html must contain {tag} once')
+        page = page.replace(tag, inline)
+    return page
+
+
 def run_window(app):
     import webview
 
@@ -214,7 +231,7 @@ def run_window(app):
 
     app.window = webview.create_window(
         'ClinReport',
-        url=str(UI_DIR / 'index.html'),
+        html=window_page(),
         js_api=Api(app),
         width=1000,
         height=700,

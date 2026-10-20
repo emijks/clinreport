@@ -105,6 +105,12 @@ makes Celery use the `solo` pool (on all platforms, for identical behaviour). No
    ([ADR 0009](../decisions/0009-in-app-updates-from-github-releases.md)). Closing the window stops the process tree.
 
 The window (`ui/`: plain HTML/CSS/JS in pywebview — WebView2 on Windows, WebKit on macOS) talks only to `api.py`.
+pywebview gets the page as one document (`window_page()` inlines `app.css` and `app.js`), not as a file path: a path would
+start pywebview's HTTP server on the fixed port 42001, shared by every pywebview app — when another program holds it the
+window stays empty on macOS and shows that program's page on Windows ([issue desktop/007](../issues/desktop/007-empty-window-macos.md)).
+So the page must not load files (no `src`/`href` to `ui/`). It must run on Safari 13 (macOS 10.15): `app.js` avoids newer
+syntax and APIs, and the inline script in `index.html` supplies `replaceChildren`; `tests/desktop/test_window_page.py`
+checks both.
 
 ### Logs
 

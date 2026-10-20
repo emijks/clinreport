@@ -11,6 +11,12 @@ All notable changes to ClinReport. Format: [Keep a Changelog](https://keepachang
   errors of the window page and of background tasks, crashes, and output that was lost when the app was started from
   Finder. On macOS the logs moved to `~/Library/Logs/ClinReport` (visible in Console).
 
+### Fixed
+
+- **Empty ClinReport window** on macOS when another program used port 42001 (on Windows the window could show that
+  program's page instead). The window no longer needs a port at all.
+- The window works on macOS 10.15 with the Safari it shipped with (13).
+
 ## [3.0.0] - unreleased
 
 ClinReport becomes an OpenCRAVAT extension with a desktop app around it. Reports are made in OpenCRAVAT itself: mark

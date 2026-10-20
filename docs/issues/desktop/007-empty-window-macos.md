@@ -2,7 +2,7 @@
 
 | Status | Priority |
 |---|---|
-| open — logging done, fix pending | P1 |
+| fixed — to confirm on the Mac | P1 |
 
 ## Problem
 
@@ -38,17 +38,23 @@ Two more problems wait behind it on 10.15:
   WebView2 versions, App Translocation, uncaught errors in any thread, native crashes, stdout/stderr without a terminal,
   WebKit's failed page loads, the page's own errors and its `ready` signal; a warning when the page has not started in
   20 s. macOS logs in `~/Library/Logs/ClinReport`.
+- The window gets its page as one document (`window_page()`: `app.css` and `app.js` inlined, `html=`), so pywebview
+  starts no HTTP server and port 42001 no longer matters. Checked on Windows: with a dummy server answering on
+  127.0.0.1:42001, the window self-test still shows our page and logs `ready: init done`; before the change the window
+  showed the other server's page.
+- `app.js` runs on Safari 13: the inline script supplies `replaceChildren`; `tests/desktop/test_window_page.py` rejects
+  newer syntax and APIs and any file the page would load. (`.flat`, `max()` are older; `accent-color`, flex `gap` only
+  lose styling; the clipboard call already falls back to `execCommand('copy')`.)
 
 ## TODO
 
-- [ ] On the Mac: `sw_vers`, Safari and WebKit versions; `lsof -nP -iTCP:42001 -sTCP:LISTEN` and
+- [ ] On the Mac (optional now, confirms the cause): `sw_vers`, Safari and WebKit versions; `lsof -nP -iTCP:42001 -sTCP:LISTEN` and
       `curl http://127.0.0.1:42001/index.html` while ClinReport runs; start it from Terminal
       (`/Applications/ClinReport.app/Contents/MacOS/ClinReport`) and keep the output; `xattr -l` on the app; the old
       logs from `~/Library/Application Support/ClinReport/logs`.
-- [ ] Stop depending on port 42001: give pywebview the finished page (`html=`, `app.css` and `app.js` inlined) instead of a
-      file path, so no HTTP server is started; the js_api does not need it.
-- [ ] Make `app.js` run on Safari 13: a `replaceChildren` stand-in, and a test that rejects newer APIs.
-- [ ] Decide on ATS keys in `packaging/macos/Info.plist` and whether the launcher script should keep `exec`ing `python3`.
+- [x] Stop depending on port 42001.
+- [x] Make `app.js` run on Safari 13.
+- [x] ATS keys in `packaging/macos/Info.plist`: not needed now — the window loads nothing over HTTP.
 - [ ] A new build on that Mac, with its session log.
 
 ## Acceptance
