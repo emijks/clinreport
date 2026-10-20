@@ -14,13 +14,14 @@ One code base, three ways to run it:
 
 ## Install
 
-**Desktop app** — download from [Releases](https://github.com/emijks/clinreport/releases):
+**Desktop app** — step by step in Russian: [INSTALL.md](INSTALL.md). Download from
+[Releases](https://github.com/emijks/clinreport/releases):
 
-- **Windows 10/11:** `ClinReport-<version>-windows-x64.exe`. If SmartScreen warns about an unknown publisher:
+- **Windows 10/11, 64-bit:** `ClinReport-<version>-windows-x64.exe`. If SmartScreen warns about an unknown publisher:
   «Подробнее» → «Выполнить в любом случае» (the app is not code-signed).
 - **macOS:** `ClinReport-<version>-macos-arm64.dmg` (Apple Silicon, macOS 11+) or `…-macos-x64.dmg` (Intel, macOS 10.15+).
-  Drag ClinReport to Applications; on the first start right-click it → «Открыть» → «Открыть» (not notarised). If macOS
-  says the app is damaged: `xattr -cr /Applications/ClinReport.app`.
+  Drag ClinReport to Applications, then remove the quarantine flag once per installed version (the app is not
+  notarised): `xattr -dr com.apple.quarantine /Applications/ClinReport.app`.
 
 **Update:** ClinReport shows «обновить до X» when a new version is out (Windows: one click; macOS: opens the release page),
 or install the new version over the old one. Settings, your own templates and OpenCRAVAT jobs are kept — they live in

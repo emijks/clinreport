@@ -8,7 +8,8 @@
 - **Windows Smart App Control** (on by default on some fresh Windows 11 installs) blocks unsigned DLLs inside the bundle
   (Python packages' `.pyd`/`.dll`); it was seen blocking numpy/pandas on the dev machine. The only fixes are turning it off
   (irreversible without reinstalling Windows) or signing every binary.
-- **macOS Gatekeeper**: the app is ad-hoc signed only; users right-click → «Открыть» once, or `xattr -cr`. Notarisation needs
+- **macOS Gatekeeper**: the app is ad-hoc signed only; users remove the quarantine flag once per installed version, `xattr -dr com.apple.quarantine
+  /Applications/ClinReport.app` ([INSTALL.md](../../../INSTALL.md)). Notarisation needs
   an Apple Developer ID (99 USD/year).
 
 Installers built on the dev machine never show the SmartScreen prompt: only downloaded files carry the "from the

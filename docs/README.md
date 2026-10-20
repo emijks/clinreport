@@ -8,7 +8,8 @@ reference, and explanation of the design and its decisions.
 |---|---|---|
 | **Explanation** | [architecture.md](architecture.md) + [architecture.drawio.svg](architecture.drawio.svg) | how it fits together, where a change belongs, the invariants |
 | | [decisions/](decisions/README.md) | why it is built this way (architecture decision records) |
-| **Guides** (Russian, for clinicians) | [guides/desktop-app.md](guides/desktop-app.md) | install, use and update the desktop app |
+| **Guides** (Russian, for clinicians) | [../INSTALL.md](../INSTALL.md) | supported systems; install, update, remove the desktop app |
+| | [guides/desktop-app.md](guides/desktop-app.md) | use the desktop app |
 | | [guides/templates.md](guides/templates.md) | the lab's own report templates |
 | | [guides/extension.md](guides/extension.md) | adding ClinReport to an existing OpenCRAVAT |
 | | [guides/cli.md](guides/cli.md) | reports from the command line |
