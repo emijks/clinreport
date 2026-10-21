@@ -11,8 +11,16 @@ All notable changes to ClinReport. Format: [Keep a Changelog](https://keepachang
   errors of the window page and of background tasks, crashes, and output that was lost when the app was started from
   Finder. On macOS the logs moved to `~/Library/Logs/ClinReport` (visible in Console).
 
+### Changed
+
+- **The browser no longer opens by itself** when ClinReport starts (or is started again while running). «Открыть»
+  opens OpenCRAVAT when you need it; the old setting is reset to off on update.
+- **Clearer server buttons** on «Обзор»: blue «Открыть» (available while OpenCRAVAT runs) and one server button —
+  red «Остановить» while it runs or starts, green «Запустить» when it is stopped. «Открыть результат…» moved to the «Недавние результаты» card.
+
 ### Fixed
 
+- «Остановить» while OpenCRAVAT was still starting could leave it running in the background.
 - **Empty ClinReport window on macOS older than 11.3** (e.g. 10.15 Catalina): the window library asked WebKit for a
   feature these systems lack, and the page was never loaded.
 - The window could show another program's page on Windows (or stay empty on macOS) when that program used port 42001.

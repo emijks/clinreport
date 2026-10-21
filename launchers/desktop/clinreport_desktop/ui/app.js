@@ -97,6 +97,35 @@ const STATE_TEXT = {
   stopped: 'OpenCRAVAT остановлен', failed: 'OpenCRAVAT не запустился',
 };
 let last = null;
+let serverCall = null;  // 'start' | 'stop' while the window waits for that call
+
+// Открыть: only while running. One server button: Остановить while running or starting (cancels it),
+// Запустить otherwise. While a start/stop call is on its way, both wait for it.
+function renderControls() {
+  const s = last ? last.server.state : 'unknown';
+  const running = s === 'running';
+  const waiting = Boolean(serverCall);
+  $('open-oc').disabled = waiting || !running;
+  $('open-result').disabled = !running;
+  const stops = running || s === 'starting';
+  const toggle = $('toggle-server');
+  toggle.textContent = stops ? 'Остановить' : 'Запустить';
+  toggle.className = stops ? 'btn stop' : 'btn go';
+  toggle.disabled = waiting || !(stops || s === 'stopped' || s === 'failed');
+}
+
+async function serverAction(method) {
+  serverCall = method;
+  renderControls();
+  try {
+    await call(method);
+  } catch (error) {
+    notify('err', error.message || String(error));
+  } finally {
+    serverCall = null;
+    await refreshState();
+  }
+}
 
 async function refreshState() {
   let state;
@@ -124,13 +153,7 @@ async function refreshState() {
   $('hero-error').hidden = s.state !== 'failed';
   $('hero-error').textContent = s.error || '';
 
-  const running = s.state === 'running';
-  $('open-result').disabled = !running;
-  $('open-oc').disabled = !running;
-  const toggle = $('toggle-server');
-  toggle.textContent = running || s.state === 'starting' ? 'Остановить' : 'Запустить';
-  toggle.className = running || s.state === 'starting' ? 'btn ghost danger' : 'btn primary';
-  toggle.disabled = s.state === 'stopping';
+  renderControls();
 
   const v = state.versions;
   $('brand-version').textContent = `версия ${v.app}`;
@@ -361,7 +384,7 @@ async function loadSettings() {
     $('s-clinician').value = r.clinician || '';
     $('s-template').replaceChildren(...s.default_templates.map((t) => el('option', { value: t.id }, t.title)));
     $('s-template').value = s.default_template;
-    $('s-browser').checked = Boolean(s.launcher.open_browser);
+    $('s-browser-at-start').checked = Boolean(s.launcher.open_browser_at_start);
     $('s-autostart').checked = Boolean(s.launcher.autostart);
     $('s-prerelease').checked = Boolean(s.launcher.update_prerelease);
     $(s.launcher.port_mode === 'fixed' ? 's-port-fixed' : 's-port-auto').checked = true;
@@ -383,7 +406,7 @@ function renderRu() {
 async function saveSettings() {
   const report = { clinician: $('s-clinician').value, template: $('s-template').value };
   const launcher = {
-    open_browser: $('s-browser').checked, autostart: $('s-autostart').checked,
+    open_browser_at_start: $('s-browser-at-start').checked, autostart: $('s-autostart').checked,
     update_prerelease: $('s-prerelease').checked,
     port_mode: $('s-port-fixed').checked ? 'fixed' : 'auto', port: Number($('s-port-value').value) || 8080,
   };
@@ -434,13 +457,12 @@ async function copyDiagnostics() {
 
 function init() {
   TABS.forEach((t) => $('tab-' + t).addEventListener('click', () => show(t)));
-  $('open-result').addEventListener('click', (e) => busy(e.currentTarget, async () => { await call('choose_result'); loadRecent(); }));
-  $('open-oc').addEventListener('click', (e) => busy(e.currentTarget, () => call('open_oc')));
-  $('toggle-server').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+  $('open-result').addEventListener('click', (e) => busy(e.currentTarget, async () => { await call('choose_result'); loadRecent(); }).then(renderControls));
+  $('open-oc').addEventListener('click', (e) => busy(e.currentTarget, () => call('open_oc')).then(renderControls));
+  $('toggle-server').addEventListener('click', () => {
     const s = last && last.server.state;
-    await call(s === 'running' || s === 'starting' ? 'stop' : 'start');
-    refreshState();
-  }));
+    serverAction(s === 'running' || s === 'starting' ? 'stop' : 'start');
+  });
   $('add-tpl').addEventListener('click', (e) => busy(e.currentTarget, startAdd));
   $('add-cancel').addEventListener('click', () => { $('add-form').hidden = true; tpl.adding = null; });
   $('add-form').addEventListener('submit', (e) => { e.preventDefault(); busy($('add-submit'), submitAdd); });

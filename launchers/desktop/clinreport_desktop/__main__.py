@@ -52,7 +52,7 @@ class App:
         if self.args.result:
             self.open_result(self.args.result)
             self.args.result = None
-        elif config.load()['open_browser'] and not self.args.minimized and not self.args.selftest:
+        elif config.load()['open_browser_at_start'] and not self.args.minimized and not self.args.selftest:
             webbrowser.open(self.server.start_url)
         threading.Thread(target=self.check_store, daemon=True).start()
         self.refresh_ru()
@@ -121,14 +121,12 @@ class App:
             log.warning('cannot open %s: %s', path, result['error'])
 
     def activate(self, path):
-        """A second launch: open its file (or the start page) and bring the window up."""
+        """A second launch: open its file, if any, and bring the window up."""
         if path:
             if self.server.state == 'running':
                 self.open_result(path)
             else:
                 self.args.result = path
-        elif self.server.state == 'running':
-            webbrowser.open(self.server.start_url)
         if self.window:
             try:
                 self.window.restore()

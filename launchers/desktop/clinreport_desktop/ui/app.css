@@ -69,6 +69,8 @@ section[role="tabpanel"] { display: flex; flex-direction: column; gap: 14px; min
 h2 { font-size: 16px; margin: 0; }
 h3 { font-size: 11.5px; margin: 0 0 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; min-width: 0; }
+.card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.card-head h3 { margin: 0; }
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .row.end { justify-content: flex-end; }
 .spacer { flex: 1; }
@@ -83,6 +85,11 @@ h3 { font-size: 11.5px; margin: 0 0 10px; color: var(--muted); font-weight: 600;
 .btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
 .btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--on-accent); }
+.btn.go { background: var(--ok); border-color: var(--ok); color: var(--on-accent); font-weight: 600; }
+.btn.stop { background: var(--err); border-color: var(--err); color: var(--on-accent); font-weight: 600; }
+.btn.go:hover:not(:disabled), .btn.stop:hover:not(:disabled) { filter: brightness(1.1); color: var(--on-accent); }
+.btn.go:hover:not(:disabled) { border-color: var(--ok); }
+.btn.stop:hover:not(:disabled) { border-color: var(--err); }
 .btn.ghost { background: transparent; }
 .btn.danger:hover:not(:disabled) { border-color: var(--err); color: var(--err); }
 .btn.sm { padding: 3px 10px; font-size: 12.5px; }

@@ -364,6 +364,9 @@ class Server:
             while time.time() < deadline:
                 if self._proc.poll() is not None:
                     raise RuntimeError(f'OpenCRAVAT завершился с кодом {self._proc.returncode}.\n{self.log_tail(15)}')
+                if self.state in ('stopping', 'stopped'):  # «Остановить» while starting
+                    self._terminate()
+                    return
                 if self.responds():
                     self.started_at = time.time()
                     self._set('running')
@@ -371,8 +374,6 @@ class Server:
                     for callback in list(self.ready_callbacks):
                         threading.Thread(target=callback, daemon=True).start()
                     threading.Thread(target=self._watch, daemon=True, name='oc-watch').start()
-                    return
-                if self.state == 'stopping':
                     return
                 time.sleep(0.5)
             raise RuntimeError(f'OpenCRAVAT не ответил за {READY_TIMEOUT} с.\n{self.log_tail(15)}')

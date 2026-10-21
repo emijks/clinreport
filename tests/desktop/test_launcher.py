@@ -28,12 +28,17 @@ def env(tmp_path, monkeypatch):
 
 def test_config_defaults_update_and_validation(env):
     assert config.load()['port_mode'] == 'auto'
-    settings = config.update({'port_mode': 'fixed', 'port': '8099', 'open_browser': 0, 'unknown': 1})
-    assert (settings['port_mode'], settings['port'], settings['open_browser']) == ('fixed', 8099, False)
+    settings = config.update({'port_mode': 'fixed', 'port': '8099', 'open_browser_at_start': 0, 'unknown': 1})
+    assert (settings['port_mode'], settings['port'], settings['open_browser_at_start']) == ('fixed', 8099, False)
     with pytest.raises(ValueError):
         config.update({'port': 80})
     with pytest.raises(ValueError):
         config.update({'port_mode': 'random'})
+
+
+def test_browser_does_not_open_at_start_even_if_an_old_install_asked_for_it(env):
+    config.save({'open_browser': True})
+    assert config.load()['open_browser_at_start'] is False
 
 
 def test_recent_results_are_unique_newest_first_and_capped(env):

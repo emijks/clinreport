@@ -95,15 +95,17 @@
           <div class="meta" id="hero-meta"></div>
         </div>
         <div class="actions">
-          <button class="btn primary" type="button" id="open-result">Открыть результат…</button>
-          <button class="btn" type="button" id="open-oc">Открыть OpenCRAVAT</button>
-          <button class="btn ghost danger" type="button" id="toggle-server">Остановить</button>
+          <button class="btn primary" type="button" id="open-oc" title="Открыть OpenCRAVAT в браузере" disabled>Открыть</button>
+          <button class="btn stop" type="button" id="toggle-server" disabled>Остановить</button>
         </div>
         <div class="hero-error" id="hero-error" hidden></div>
       </div>
 
       <div class="card">
-        <h3>Недавние результаты</h3>
+        <div class="card-head">
+          <h3>Недавние результаты</h3>
+          <button class="btn sm" type="button" id="open-result" disabled>Открыть результат…</button>
+        </div>
         <div class="list" id="recent"></div>
       </div>
 
@@ -175,7 +177,7 @@
         <div class="card">
           <h3>Запуск</h3>
           <div class="stack">
-            <label class="check-line"><input type="checkbox" id="s-browser">
+            <label class="check-line"><input type="checkbox" id="s-browser-at-start">
               <span>Открывать OpenCRAVAT в браузере при запуске</span></label>
             <label class="check-line"><input type="checkbox" id="s-autostart">
               <span>Запускать при входе в систему<small>Сервер стартует в фоне, окно свёрнуто</small></span></label>

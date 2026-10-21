@@ -13,7 +13,9 @@ from pathlib import Path
 from . import paths
 
 DEFAULTS = {
-    'open_browser': True,  # open the OpenCRAVAT start page when the server is ready
+    # open the OpenCRAVAT start page when the server is ready; renamed from open_browser (default True) so that
+    # installs which stored it pick up the new default
+    'open_browser_at_start': False,
     'autostart': False,  # start at login (minimised)
     'port_mode': 'auto',  # 'auto' | 'fixed'
     'port': 8080,
@@ -59,7 +61,7 @@ def update(changes: dict) -> dict:
                 raise ValueError('Порт должен быть от 1024 до 65535.')
         elif key == 'port_mode' and value not in ('auto', 'fixed'):
             raise ValueError(f'Неизвестный режим порта: {value}')
-        elif key in ('open_browser', 'autostart', 'update_prerelease'):
+        elif key in ('open_browser_at_start', 'autostart', 'update_prerelease'):
             value = bool(value)
         settings[key] = value
     save(settings)
