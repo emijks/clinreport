@@ -56,10 +56,11 @@ jobs:
           rm -f "$staging/modules/ruff.toml"
           find "$staging" -name __pycache__ -prune -exec rm -rf {} +
           (cd dist && zip -qr "clinreport-extension-$VERSION.zip" "clinreport-extension-$VERSION")
+      # Archived on purpose: download-artifact unpacks an unarchived .zip, and the release would find no zip to attach.
       - uses: actions/upload-artifact@v7
         with:
+          name: clinreport-extension-${{ needs.version.outputs.version }}
           path: dist/clinreport-extension-${{ needs.version.outputs.version }}.zip
-          archive: false
           if-no-files-found: error
 
   publish:
@@ -71,7 +72,7 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v5
-      # Every artifact of this run: the installers and the extension zip (uploaded unzipped), coverage.xml.
+      # Every artifact of this run: the installers (uploaded unzipped), the extension zip (in an archive), coverage.xml.
       # The release globs below search subfolders, wherever download-artifact puts unzipped files.
       - uses: actions/download-artifact@v8
         with:
