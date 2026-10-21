@@ -46,6 +46,10 @@ The `pypi_dependency` list in a module yml is honoured only by Store installs (`
 - `route.py` detects the Flask GUI by finding `webapp_proxy_handler` in the call stack while it is imported (the aiohttp
   loader is `setup_webapp_routes`) and builds Flask handlers. Verified on 3.1.1 in Docker ([issue 002](../issues/clinreport/002-opencravat-3x-untested.md)).
 
+Neither loader catches errors (2.2.0 – 3.2.4): a `route.py` that raises on import stops the whole GUI, silently for the
+user. `route.py` therefore imports `clinreport_core` inside `try` and, if that fails (typically `docxtpl` missing from
+OpenCRAVAT's Python), registers routes that answer 503 with the package to install.
+
 ## Result viewer and widgets
 
 Files: `cravat/webresult/webresult.py`, `cravat/webresult/nocache/js/{main,setup,variables}.js`.
@@ -75,7 +79,9 @@ The viewer core has no note endpoint. The **`wgnote`** base module
 v3.0.0) adds a text box + **Save** to the variant/gene detail panel and calls `GET /result/runwidget/note`
 (`wgnote.py:get_data`) which runs `update variant set <col>=? where base__uid=?`, where `<col>` is
 **`base__note_variant` if that column exists (results made/updated by OC ≥ 2.3.1), else `base__note`**.
-ClinReport reads only `base__note` — see [issue 019](../issues/clinreport/019-note-column-base-note-variant.md).
+ClinReport reads `base__note_variant` when the result has it and `base__note` otherwise
+(`VariantSource._note_expression`; [issue 019](../issues/clinreport/019-note-column-base-note-variant.md), fixed in 3.0.1).
+Results of OC ≥ 2.3.1 have only `base__note_variant` (`constants.crv_def`); the bundled OC 3.2.3 is one of them.
 Without `wgnote` installed, clinicians cannot mark variants at all.
 
 ### Resolving the result file
@@ -127,6 +133,31 @@ runs `oc report <db> -t <type>` with **no module options**; `download_report` (`
 | **3.2.3** | **3.11 (Windows, native) + desktop patches** | ✅ viewer, widget, review page, custom templates, `.docx`, Excel via the Jobs page and Store installs (Celery `solo` pool) | 2026-10-15: smoke 12/12, e2e 7/7, `report_via_jobs.py` (`launchers/desktop/clinreport_oc_compat.py`) |
 | **2.2.9** | **3.11 (Linux, Docker)** | ✅ same checks | same |
 | 3.x `oc gui --aiohttp` | any | ❔ not tested (route.py detects it from the call stack) | — |
+
+### What the modules need, by OpenCRAVAT version (source analysis)
+
+From the PyPI sources of 21 releases, 1.8.0 – 3.2.4 (2026-10-21); read, not run. "Untested" means the mechanisms are there
+but nobody has run ClinReport on it.
+
+| OpenCRAVAT | Python (OC's own) | Modules | What decides it |
+|---|---|---|---|
+| ≤ 2.1.x | — | ❌ | no webapp route loader (`setup_webapp_routes` appears in 2.2.0): the page loads, every action fails |
+| 2.2.0 – 2.2.7 | 3.8 – 3.11 | ⚠️ untested | OC still allows Python 3.6/3.7; the modules need 3.8 |
+| 2.2.8 – 2.5.0 | 3.8 – 3.11 | ✅ 2.2.9 tested | `import imp` (gone in Python 3.12) until 2.5.0; `pkg_resources` → `setuptools < 81` |
+| 2.6 – 2.15 | 3.8/3.9 – 3.13 | ⚠️ untested | no `imp`; still `pkg_resources` → `setuptools < 81` |
+| 2.17 | 3.9 – 3.13 | ⚠️ untested | no `pkg_resources`; on 3.14 the viewer hangs (`nest_asyncio`, see above) |
+| 3.0 – 3.2.4 | 3.9+ | ✅ Linux/macOS; ❌ Windows | Windows needs the desktop patches; **3.2.4 still has the `/C:` path and `prefork` pool** |
+
+The same in every release from 2.2.0 to 3.2.4: the `routes` format and its `/webapps/<name>/` prefix, `admin_util`
+`get_conf_dir` / `get_jobs_dir` / `get_system_conf`, the viewer globals `dbPath` / `jobId` / `username` and
+`widgetGenerators`. The modules' own packages install on Python 3.8 (`docxtpl` 0.20, `jinja2` 3.1, `lxml` 6;
+`python-docx` stops at 1.1.2 there).
+
+**Importing `cravat` writes to disk** in every release: `constants.py` creates `C:\open-cravat`, `/Users/Shared/open-cravat`
+or (Linux) `conf/` inside the package, and copies `cravat-system.yml` from the template when it is missing — whatever
+`OPENCRAVAT_SYSTEM_CONF_PATH` says. Any `oc` command (`oc version`, `oc config md`) therefore changes the computer; to
+inspect another OpenCRAVAT without that, locate the package with `importlib.util.find_spec('cravat')` (does not import it)
+and read its dist-info and `cravat-system.yml` directly.
 
 ## OpenCRAVAT 3.x specifics (verified in Docker)
 

@@ -11,6 +11,7 @@ Background and the reasons behind the rules: [docs/](docs/README.md), especially
 | `modules/webapps/clinreport/clinreport_core/` | report logic: `service.py` (handlers), `process.py` (report content), `database.py`, `templates.py`, `labels.py` | almost every feature |
 | `modules/webviewerwidgets/wgclinreport/` | Summary-tab button that opens the review page | the entry point in the viewer |
 | `launchers/desktop/clinreport_desktop/` | desktop control window (pywebview), starts OpenCRAVAT, updates | desktop-only behaviour |
+| `launchers/desktop/clinreport_desktop/environments.py` | other OpenCRAVAT installations: find (no side effects), judge, install our modules ([ADR 0015](docs/decisions/0015-run-on-an-existing-opencravat.md)) | «Окружения»; after a new OpenCRAVAT release (the matrix in `assess`) |
 | `launchers/desktop/clinreport_oc_compat.py` | patches that make OpenCRAVAT 3.2.3 run on Windows | after an OpenCRAVAT bump |
 | `launchers/desktop/clinreport_desktop/webview_compat.py` | patches that make pywebview 6.2.1 run on macOS 10.15 | after a pywebview bump |
 | `launchers/cli/cli.py` | command-line tool on `clinreport_core.service` | CLI options |

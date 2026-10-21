@@ -8,6 +8,10 @@ that Store modules pull in go to data/python-packages (PIP_TARGET + PYTHONPATH),
 
 The server process runs with CLINREPORT_DESKTOP=1 (clinreport_oc_compat patches OpenCRAVAT 3.x for Windows)
 and CLINREPORT_EDITION=desktop (ClinReport without the database and CLINBIO).
+
+Another OpenCRAVAT on the computer (an "environment", see environments.py) runs as it is: its own Python, its own
+cravat-system.yml and modules, nothing of ours written there. Only CLINREPORT_CONF_DIR points at our conf dir, so the
+report settings and the lab's templates are the same whichever environment runs.
 """
 
 import importlib.metadata
@@ -68,11 +72,18 @@ def server_log() -> Path:
 # --- preparation (idempotent, runs before every start) ---
 
 
+def pid_file() -> Path:
+    """The OpenCRAVAT of another environment we started (kill_leftovers cannot recognise it by its path)."""
+    return paths.data_dir() / 'server.pid'
+
+
 def kill_leftovers():
     """OpenCRAVAT processes left by a session that crashed or was killed (they hold the port and
-    lock oc.exe): anything started from our bin dir, and anything running the bundle's own Python
-    (its multiprocessing workers) — except launcher processes."""
+    lock oc.exe): anything started from our bin dir, anything running the bundle's own Python
+    (its multiprocessing workers) — except launcher processes — and the process in server.pid."""
     import psutil
+
+    _kill_recorded(psutil)
 
     marker = str(bin_dir()).lower()
     python_dir = str(console_python().parent).lower()
@@ -93,6 +104,54 @@ def kill_leftovers():
         _kill_tree(proc)
     if victims:
         log.info('stopped %d leftover OpenCRAVAT process(es) from an earlier session', len(victims))
+
+
+def _kill_recorded(psutil):
+    try:
+        pid, created = (float(x) for x in pid_file().read_text(encoding='utf-8').split())
+    except (OSError, ValueError):
+        return
+    try:
+        proc = psutil.Process(int(pid))
+        if abs(proc.create_time() - created) < 1:  # the same process, not a new one that reused the pid
+            log.info('stopping OpenCRAVAT %s left by an earlier session', int(pid))
+            _kill_tree(proc)
+    except psutil.Error:
+        pass
+    pid_file().unlink(missing_ok=True)
+
+
+# Runs `oc` of another environment without depending on its console script (`oc` may be missing or point elsewhere).
+OC_MAIN = "import sys; from cravat.oc import main; sys.argv[0] = 'oc'; sys.exit(main())"
+
+
+def supports_port(environment: dict) -> bool:
+    """`oc gui --port` exists from OpenCRAVAT 2.2.9 (2.2.0 has none); older ones use gui_port of their conf."""
+    from .environments import version_tuple
+
+    return version_tuple(environment.get('opencravat')) >= (2, 2, 9)
+
+
+def environment_command(environment: dict, port: int) -> list:
+    command = [environment['python'], '-c', OC_MAIN, 'gui', '--headless']
+    if supports_port(environment):
+        command += ['--port', str(port)]
+    return command
+
+
+def environment_env(environment: dict) -> dict:
+    from .environments import clean_env
+
+    env = clean_env(environment.get('prefix'))
+    env.update(
+        {
+            'PYTHONUTF8': '1',
+            'PYTHONWARNINGS': 'ignore:pkg_resources is deprecated as an API:UserWarning',
+            'CLINREPORT_CONF_DIR': str(paths.conf_dir()),
+            'CLINREPORT_EDITION': 'desktop',
+        }
+    )
+    return env
 
 
 def make_scripts():
@@ -274,8 +333,8 @@ def versions() -> dict:
     }
 
 
-def module_status() -> list:
-    modules = paths.data_dir() / 'modules'
+def module_status(modules_dir=None) -> list:
+    modules = Path(modules_dir) if modules_dir else paths.data_dir() / 'modules'
     result = []
     for rel in REQUIRED_MODULES:
         folder = modules / rel
@@ -302,6 +361,7 @@ class Server:
         self._lock = threading.Lock()
         self._on_change = on_change or (lambda: None)
         self.ready_callbacks = []
+        self.environment = None  # None: the built-in OpenCRAVAT; else an environments.py dict (another install)
 
     @property
     def url(self) -> str:
@@ -319,27 +379,47 @@ class Server:
             'started_at': self.started_at,
             'uptime': int(time.time() - self.started_at) if self.started_at and self.state == 'running' else 0,
             'error': self.error,
+            'environment': (self.environment or {}).get('name', 'Встроенное'),
         }
 
     def _set(self, state, error=None):
         self.state, self.error = state, error
         self._on_change()
 
-    def start(self, port_mode='auto', fixed_port=8080):
-        """Prepare and launch in the background; state goes starting → running | failed."""
+    def start(self, port_mode='auto', fixed_port=8080, environment=None):
+        """Prepare and launch in the background; state goes starting → running | failed.
+        `environment`: None for the built-in OpenCRAVAT, or another environment (environments.py)."""
         with self._lock:
             if self.state in ('starting', 'running'):
                 return
+            self.environment = environment
             self._set('starting')
         threading.Thread(target=self._run, args=(port_mode, fixed_port), daemon=True, name='oc-start').start()
 
-    def _run(self, port_mode, fixed_port):
-        try:
-            kill_leftovers()
+    def _prepare(self, port_mode, fixed_port):
+        """(command, env) for the selected OpenCRAVAT; sets self.port."""
+        environment = self.environment
+        if environment is None:
             self.port = pick_port(port_mode, int(fixed_port))
             conf_path = write_system_conf(self.port)
             sync_modules()
             make_scripts()
+            return [str(oc_command()), 'gui', '--headless', '--port', str(self.port)], server_env(conf_path)
+        if not Path(environment['python']).is_file():
+            raise RuntimeError(f'Python окружения «{environment["name"]}» не найден: {environment["python"]}')
+        if supports_port(environment):
+            self.port = pick_port(port_mode, int(fixed_port))
+        else:
+            self.port = int(environment.get('gui_port') or 8060)
+            if not port_free(self.port):
+                raise RuntimeError(f'Порт {self.port} из настроек этого OpenCRAVAT занят другой программой.')
+        paths.logs_dir().mkdir(parents=True, exist_ok=True)
+        return environment_command(environment, self.port), environment_env(environment)
+
+    def _run(self, port_mode, fixed_port):
+        try:
+            kill_leftovers()
+            command, env = self._prepare(port_mode, fixed_port)
             log_path = server_log()
             if log_path.exists():
                 os.replace(log_path, log_path.with_suffix('.log.1'))
@@ -350,16 +430,26 @@ class Server:
             else:
                 kwargs['start_new_session'] = True
             self._proc = subprocess.Popen(
-                [str(oc_command()), 'gui', '--headless', '--port', str(self.port)],
+                command,
                 cwd=str(paths.data_dir()),
-                env=server_env(conf_path),
+                env=env,
                 stdin=subprocess.DEVNULL,
                 stdout=log_file,
                 stderr=subprocess.STDOUT,
                 **kwargs,
             )
             log_file.close()
-            log.info('OpenCRAVAT starting on port %s (pid %s)', self.port, self._proc.pid)
+            if self.environment is not None:
+                import psutil
+
+                created = psutil.Process(self._proc.pid).create_time()
+                pid_file().write_text(f'{self._proc.pid} {created}', encoding='utf-8')
+            log.info(
+                'OpenCRAVAT starting on port %s (pid %s, %s)',
+                self.port,
+                self._proc.pid,
+                (self.environment or {}).get('python', 'built-in'),
+            )
             deadline = time.time() + READY_TIMEOUT
             while time.time() < deadline:
                 if self._proc.poll() is not None:
@@ -414,6 +504,7 @@ class Server:
     def _terminate(self):
         proc, self._proc = self._proc, None
         if proc is None or proc.poll() is not None:
+            pid_file().unlink(missing_ok=True)
             return
         import psutil
 
@@ -421,6 +512,7 @@ class Server:
             _kill_tree(psutil.Process(proc.pid))
         except psutil.NoSuchProcess:
             pass
+        pid_file().unlink(missing_ok=True)
 
     def log_tail(self, lines=40) -> str:
         try:

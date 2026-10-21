@@ -2,7 +2,7 @@
 
 | Status | Priority |
 |---|---|
-| open — deferred (2026-10-15) | P3 |
+| done (3.0.1: tab «Окружения», [ADR 0015](../../decisions/0015-run-on-an-existing-opencravat.md)) | P3 |
 
 Staff who already run OpenCRAVAT (official installer, pip, conda) use `packaging/install_extension.py`, which must be run with
 OpenCRAVAT's own Python. Nothing finds that Python or checks versions ([clinreport/014](../clinreport/014-distribution-and-versioning.md),

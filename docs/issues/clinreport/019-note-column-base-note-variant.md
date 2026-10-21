@@ -2,7 +2,7 @@
 
 | Status | Priority | Type | Area |
 |---|---|---|---|
-| open | **P1** | bug / compatibility | `clinreport_core/database.py` (`VariantSource.get_variants`) |
+| done (3.0.1) | **P1** | bug / compatibility | `clinreport_core/database.py` (`VariantSource.get_variants`) |
 
 ## Problem
 
@@ -27,12 +27,13 @@ On a result created by — or upgraded with `oc util update-result` to — OpenC
 
 ## TODO
 
-- [ ] In `VariantSource.get_variants`, detect `base__note_variant` in `pragma table_info(variant)`; if present, select rows where
+- [x] In `VariantSource.get_variants`, detect `base__note_variant` in `pragma table_info(variant)`; if present, select rows where
       `coalesce(nullif(base__note_variant, ''), base__note) is not null` and set `variant['base__note']` to that coalesced value
       so `process.py` stays unchanged.
-- [ ] Legacy branch: same coalescing before the `in (1..8)` filter (compare as text: `in ('1',…,'8')`).
-- [ ] Produce a test fixture: copy `pah2`, `alter table variant add column base__note_variant text`, move a note there; test both columns.
-- [ ] Verify with a real OC ≥ 2.3.1 install + `wgnote` 3.0.0 (mark a variant, process).
+- [x] Legacy branch: same coalescing before the `in (1..8)` filter (compare as text: `in ('1',…,'8')`).
+- [x] Produce a test fixture: copy `pah2`, `alter table variant add column base__note_variant text`, move a note there; test both columns.
+- [ ] Verify with a real OC ≥ 2.3.1 install + `wgnote` 3.0.0 (mark a variant, process). Not done: the fix is covered by
+      `tests/core/test_note_columns.py` (synthetic results of each schema, and `pah2` with its marks moved to `base__note_variant`).
 
 ## Acceptance
 

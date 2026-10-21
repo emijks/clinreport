@@ -10,7 +10,7 @@ import time
 import webbrowser
 from pathlib import Path
 
-from . import config, instance, paths, sessionlog, updates
+from . import config, environments, instance, paths, sessionlog, updates
 from .server import Server, module_status, versions
 
 log = logging.getLogger('clinreport')
@@ -34,24 +34,96 @@ class App:
         self.page_loaded = threading.Event()  # pywebview finished loading the window's page
         self.ui_ready = threading.Event()  # app.js ran its init()
         self._ui_logged = 0
+        self.search = environments.Search()
+        self.installer = environments.Installer()
+        self._envs_lock = threading.Lock()
+        self.envs = {e['id']: e for e in environments.load_cache() if e.get('id') != environments.BUILTIN_ID}
+        self.env_notice = None  # why the chosen environment was not used at start-up
+        self.pending = None  # (path, 'viewer' | 'report') to open once OpenCRAVAT is ready
+        self._closing = False  # the window's close was cancelled to stop OpenCRAVAT first
+        self._may_close = False  # OpenCRAVAT stopped: the next close goes through
 
     def modules(self):
         at, cached = self._modules_cache
         if time.time() - at > 5:
-            cached = module_status()
+            environment = self.server.environment
+            cached = module_status(environment['modules_dir'] if environment else None)
             self._modules_cache = (time.time(), cached)
         return cached
+
+    # --- environments (other OpenCRAVAT installations; environments.py) ---
+
+    def on_env_found(self, env):
+        with self._envs_lock:
+            self.envs[env['id']] = env
+            environments.save_cache(list(self.envs.values()))
+
+    def forget_env(self, env_id):
+        with self._envs_lock:
+            env = self.envs.pop(env_id, None)
+            environments.save_cache(list(self.envs.values()))
+        return env
+
+    def refresh_env(self, env_id):
+        """Probe a known environment again (after installing, or before using it). Returns it, or None if gone."""
+        env = self.envs.get(env_id)
+        if env is None or not env.get('python'):
+            return env
+        try:
+            info = environments.probe(env['python'])
+        except environments.EnvironmentError_ as e:
+            log.warning('environment %s: %s', env['python'], e)
+            return None
+        if not info.get('cravat'):
+            return None
+        fresh = environments.describe(info, env.get('source', ''))
+        self.on_env_found(fresh)
+        return fresh
+
+    def chosen_environment(self):
+        """The environment to start (None = built-in). Falls back to the built-in one, with a notice, when the chosen
+        environment is gone or cannot run any more."""
+        chosen = config.load()['environment']
+        if chosen == environments.BUILTIN_ID:
+            self.env_notice = None
+            return None
+        env = self.refresh_env(chosen)
+        if env is None or not env['verdict']['can_run']:
+            name = (self.envs.get(chosen) or {}).get('name', chosen)
+            reasons = [
+                r['text'] for r in (env or {}).get('verdict', {}).get('reasons', []) if r['level'] in ('bad', 'warn')
+            ]
+            self.env_notice = f'Окружение «{name}» сейчас недоступно, запущено встроенное.' + (
+                f' {reasons[0]}' if reasons else ''
+            )
+            log.warning('%s', self.env_notice)
+            return None
+        self.env_notice = None
+        return env
+
+    def on_install_done(self, env_id):
+        """After installing/removing modules: describe the environment again; restart it if it is the one running."""
+        self.refresh_env(env_id)
+        if self.server.environment and self.server.environment.get('id') == env_id and self.server.state == 'running':
+            log.info('modules changed in the running environment; restarting OpenCRAVAT')
+            self.server.stop()
+            self.start_server()
 
     # --- lifecycle ---
 
     def start_server(self):
         settings = config.load()
-        self.server.start(settings['port_mode'], settings['port'])
+        self._modules_cache = (0.0, [])
+        self.server.start(settings['port_mode'], settings['port'], self.chosen_environment())
 
     def _on_ready(self):
         if self.args.result:
-            self.open_result(self.args.result)
+            self.pending = (self.args.result, 'viewer')
             self.args.result = None
+        if self.pending:
+            path, target = self.pending
+            self.pending = None
+            self.open_result(path, target)
         elif config.load()['open_browser_at_start'] and not self.args.minimized and not self.args.selftest:
             webbrowser.open(self.server.start_url)
         threading.Thread(target=self.check_store, daemon=True).start()
@@ -113,20 +185,34 @@ class App:
             log.warning('update failed: %s', e)
             self.update = dict(update, state='ok', install_error=str(e))
 
-    def open_result(self, path):
+    def start_at_launch(self) -> bool:
+        """OpenCRAVAT starts when the user asks (Запустить, or opening a result) — not merely because the window
+        opened. Exceptions: a result given on the command line (double-click on a .sqlite), the sign-in autostart
+        (its setting promises a background server), the self-test, and the user's own setting."""
+        args = self.args
+        return bool(args.result or args.minimized or args.selftest or config.load()['start_server_at_launch'])
+
+    def open_when_ready(self, path, target='viewer'):
+        """Open a result now, or start OpenCRAVAT and open it when it is ready. True if it was queued."""
+        if self.server.state == 'running':
+            self.open_result(path, target)
+            return False
+        self.pending = (path, target)
+        if self.server.state in ('stopped', 'failed'):
+            self.start_server()
+        return True
+
+    def open_result(self, path, target='viewer'):
         from .api import Api
 
-        result = Api(self).open_result(path, 'viewer')
+        result = Api(self).open_result(path, target)
         if result.get('error'):
             log.warning('cannot open %s: %s', path, result['error'])
 
     def activate(self, path):
         """A second launch: open its file, if any, and bring the window up."""
         if path:
-            if self.server.state == 'running':
-                self.open_result(path)
-            else:
-                self.args.result = path
+            self.open_when_ready(path)
         if self.window:
             try:
                 self.window.restore()
@@ -147,6 +233,49 @@ class App:
     def shutdown(self):
         log.info('closing')
         self.server.stop()
+
+    def on_closing(self):
+        """The window is about to close. With OpenCRAVAT running, keep the window open, show «Завершение работы» over
+        it, stop OpenCRAVAT on another thread and close the window when it is down: the window is the last thing to
+        go, so the user sees when ClinReport has really finished. Never block here (pywebview calls this on the UI
+        thread; hide() or evaluate_js from here hangs on Windows)."""
+        if self._may_close:
+            return True
+        busy = self.server.state in ('starting', 'running', 'stopping') or self.installer.busy()
+        if not busy:
+            return True
+        if not self._closing:
+            self._closing = True
+            threading.Thread(target=self._close_after_stopping, daemon=True, name='closing').start()
+        return False
+
+    def _close_after_stopping(self):
+        def show(text, done=False):
+            try:
+                self.window.evaluate_js(f'window.clinreportShutdown && window.clinreportShutdown({json.dumps(text)}, {json.dumps(done)})')
+            except Exception:  # noqa: BLE001 - the page may be gone; closing must go on
+                pass
+
+        log.info('closing: stopping OpenCRAVAT first')
+        try:
+            self.search.cancel()
+            if self.installer.busy():
+                show('Дожидаюсь окончания установки модулей ClinReport…')
+                while self.installer.busy():
+                    time.sleep(0.5)
+            if self.server.state in ('starting', 'running', 'stopping'):
+                show('Останавливаю OpenCRAVAT…')
+                self.server.stop()
+            show('Готово', done=True)
+            time.sleep(0.4)  # let «Готово» be seen
+        except Exception:  # noqa: BLE001 - whatever happens, the window must close
+            log.exception('stopping OpenCRAVAT on close failed')
+        finally:
+            self._may_close = True
+            try:
+                self.window.destroy()
+            except Exception:  # noqa: BLE001
+                os._exit(0)
 
     # --- the window's page ---
 
@@ -244,12 +373,14 @@ def run_window(app):
         text_select=True,
         background_color='#F4F6F9',
     )
+    app.window.events.closing += app.on_closing
     app.window.events.closed += app.shutdown
     app.window.events.loaded += app.on_page_loaded
 
     def after_start():
         threading.Thread(target=app.watch_ui, daemon=True, name='ui-watch').start()
-        app.start_server()
+        if app.start_at_launch():
+            app.start_server()
         threading.Thread(target=app.check_updates, daemon=True).start()
         if app.args.selftest:
             selftest(app)

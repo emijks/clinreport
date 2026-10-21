@@ -86,6 +86,9 @@
     <button class="tab" role="tab" id="tab-templates" aria-controls="p-templates" aria-selected="false">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 1.5h5.5L13 5v9.5H4z"/><path d="M9.5 1.5V5H13M6 8h5M6 10.5h5M6 13h3"/></svg>
       Шаблоны <span class="count" id="tpl-count"></span></button>
+    <button class="tab" role="tab" id="tab-environments" aria-controls="p-environments" aria-selected="false">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2.5" width="12" height="4" rx="1"/><rect x="2" y="9.5" width="12" height="4" rx="1"/><path d="M4.5 4.5h.01M4.5 11.5h.01" stroke-width="2" stroke-linecap="round"/></svg>
+      Окружения</button>
     <button class="tab" role="tab" id="tab-settings" aria-controls="p-settings" aria-selected="false">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h7M12 4h2M2 8h2M7 8h7M2 12h9"/><circle cx="10.5" cy="4" r="1.5"/><circle cx="5.5" cy="8" r="1.5"/><circle cx="12.5" cy="12" r="1.5"/></svg>
       Настройки</button>
@@ -172,6 +175,25 @@
       <div class="card"><div class="list" id="tpl-list"></div></div>
     </section>
 
+    <!-- ============ ENVIRONMENTS ============ -->
+    <section role="tabpanel" id="p-environments" aria-labelledby="tab-environments" hidden>
+      <div>
+        <h2>Окружения</h2>
+        <p class="hint">Окружение — это Python с OpenCRAVAT и его папки: модули, задания, настройки. Обычно ничего менять
+          не нужно: ClinReport работает во встроенном окружении. Другое выбирают, если на компьютере уже есть свой
+          OpenCRAVAT с модулями и базами. Шаблоны и настройки ClinReport общие для всех окружений.</p>
+      </div>
+      <div class="row">
+        <button class="btn primary" type="button" id="env-search">Найти окружения</button>
+        <button class="btn" type="button" id="env-search-deep"
+          title="Просмотреть все папки на дисках: дольше, зато найдёт окружения в нестандартных местах">Глубокий поиск</button>
+        <button class="btn ghost" type="button" id="env-add">Указать Python…</button>
+      </div>
+      <div class="card env-search" id="env-search-box" hidden></div>
+      <div class="card"><div class="env-list" id="env-list" role="listbox" aria-label="Окружения"></div></div>
+      <div class="card" id="env-detail" hidden></div>
+    </section>
+
     <!-- ============ SETTINGS ============ -->
     <section role="tabpanel" id="p-settings" aria-labelledby="tab-settings" hidden>
       <form class="settings" id="settings-form">
@@ -188,6 +210,8 @@
         <div class="card">
           <h3>Запуск</h3>
           <div class="stack">
+            <label class="check-line"><input type="checkbox" id="s-start-at-launch">
+              <span>Запускать OpenCRAVAT при открытии ClinReport<small>Иначе — кнопкой «Запустить» или при открытии результата</small></span></label>
             <label class="check-line"><input type="checkbox" id="s-browser-at-start">
               <span>Открывать OpenCRAVAT в браузере при запуске</span></label>
             <label class="check-line"><input type="checkbox" id="s-autostart">
@@ -238,6 +262,14 @@
   </main>
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
+<div class="shutdown" id="shutdown" role="alertdialog" aria-modal="true" aria-labelledby="shutdown-title" hidden>
+  <div class="shutdown-box">
+    <b id="shutdown-title">Завершение работы ClinReport</b>
+    <span id="shutdown-text">Останавливаю OpenCRAVAT…</span>
+    <div class="bar busy" id="shutdown-bar"><i></i></div>
+    <small>Окно закроется само, когда OpenCRAVAT остановится.</small>
+  </div>
+</div>
 <script src="app.js"></script>
 </body>
 </html>
