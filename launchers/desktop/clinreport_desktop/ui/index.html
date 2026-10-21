@@ -19,6 +19,17 @@
       };
     }
 
+    // Safari < 14.1 ignores gap in flex containers (grid gap works): app.css then spaces them with margins.
+    var probe = document.createElement('div');
+    probe.style.display = 'flex';
+    probe.style.flexDirection = 'column';
+    probe.style.rowGap = '1px';
+    probe.appendChild(document.createElement('div'));
+    probe.appendChild(document.createElement('div'));
+    document.documentElement.appendChild(probe);
+    if (probe.scrollHeight !== 1) document.documentElement.className += ' no-flex-gap';
+    document.documentElement.removeChild(probe);
+
     var queue = [];
     function send(level, message) {
       var api = window.pywebview && window.pywebview.api;
@@ -121,7 +132,7 @@
       </div>
 
       <div class="notes" aria-label="Коды в колонке Note">
-        Коды в колонке Note:
+        <span>Коды в колонке Note:</span>
         <span class="note-code"><b>1</b><span>Патогенный</span></span>
         <span class="note-code"><b>2</b><span>Вероятно патогенный</span></span>
         <span class="note-code"><b>3</b><span>ВНЗ</span></span>

@@ -208,11 +208,44 @@ pre.log {
   box-shadow: 0 6px 24px rgba(0, 0, 0, .2);
 }
 
+/* Safari < 14.1 (macOS 10.15 without updates) ignores gap in flex containers; index.html then sets .no-flex-gap and
+   these margins stand in for the gaps above. Grid gaps work there and need nothing. */
+.no-flex-gap nav.side > .tab + .tab { margin-top: 2px; }
+.no-flex-gap .brand svg { margin-right: 10px; }
+.no-flex-gap .status-mini .dot { margin-right: 8px; }
+.no-flex-gap .tab svg { margin-right: 10px; }
+.no-flex-gap .notices { margin-bottom: 14px; }
+.no-flex-gap .notices > :not([hidden]) ~ * { margin-top: 8px; }
+.no-flex-gap .notice span + button { margin-left: 10px; }
+.no-flex-gap section[role="tabpanel"] > :not([hidden]) ~ *, .no-flex-gap form.settings > :not([hidden]) ~ * { margin-top: 14px; }
+.no-flex-gap .stack > :not([hidden]) ~ * { margin-top: 10px; }
+.no-flex-gap .row > :not([hidden]) ~ * { margin-left: 10px; }
+.no-flex-gap .card-head > :not([hidden]) ~ * { margin-left: 10px; }
+.no-flex-gap .hero .state .dot { margin-right: 10px; }
+.no-flex-gap .hero .meta { margin-bottom: -3px; }
+.no-flex-gap .hero .meta > * { margin: 3px 18px 3px 0; }
+.no-flex-gap .hero .actions > :not([hidden]) ~ * { margin-left: 8px; }
+.no-flex-gap dl.kv dd { margin: -3px 0; }
+.no-flex-gap dl.kv dd > * { margin: 3px 8px 3px 0; }
+.no-flex-gap .item .sub { margin: -3px 0; }
+.no-flex-gap .item .sub > * { margin: 3px 10px 3px 0; }
+.no-flex-gap .item .acts > :not([hidden]) ~ * { margin-left: 6px; }
+.no-flex-gap .notes { margin: -3px 0; }
+.no-flex-gap .notes > * { margin: 3px 6px 3px 0; }
+.no-flex-gap .check > :not([hidden]) ~ * { margin-top: 3px; }
+.no-flex-gap .confirm > * { margin-left: 6px; }
+.no-flex-gap .field > * { margin-top: 4px; }
+.no-flex-gap .check-line > :not([hidden]) ~ * { margin-left: 8px; }
+.no-flex-gap .radio-row > :not([hidden]) ~ * { margin-left: 14px; }
+.no-flex-gap .radio-row label input[type="radio"] { margin-right: 6px; }
+.no-flex-gap .radio-row label .port-input { margin-left: 6px; }
+
 @media (max-width: 860px) {
   .shell { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
   nav.side { flex-direction: row; overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border); padding: 8px; }
   .brand, .status-mini, .side .foot { display: none; }
   .tab { width: auto; flex: none; }
+  .no-flex-gap nav.side > .tab + .tab { margin: 0 0 0 2px; }
   .hero, .grid2, .fields, .fields.three, .fields-cols { grid-template-columns: 1fr; }
   .hero .actions { justify-content: flex-start; }
 }

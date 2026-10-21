@@ -26,6 +26,7 @@ All notable changes to ClinReport. Format: [Keep a Changelog](https://keepachang
 - The window could show another program's page on Windows (or stay empty on macOS) when that program used port 42001.
   The window no longer needs a port at all.
 - The window works on macOS 10.15 with the Safari it shipped with (13).
+- Spacing in the ClinReport window on macOS 10.15: text, buttons, chips and cards no longer run into each other.
 
 ## [3.0.0] - unreleased
 

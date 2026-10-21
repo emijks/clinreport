@@ -41,3 +41,26 @@ def test_inline_script_provides_replace_children():
     head = page.split('</head>')[0]
     assert 'Element.prototype.replaceChildren = function' in head
     assert '=>' not in head and 'const ' not in head and 'let ' not in head  # stays ES5
+
+
+# Flex containers whose gap needs no stand-in: main (its children space themselves), .btn (text only).
+FLEX_GAP_EXEMPT = {'main', '.btn'}
+
+
+def test_every_flex_gap_has_a_fallback_for_safari_13():
+    """Safari < 14.1 ignores gap in flex containers; index.html sets .no-flex-gap and app.css uses margins instead."""
+    css = re.sub(r'/\*.*?\*/', '', (UI_DIR / 'app.css').read_text(encoding='utf-8'), flags=re.S)
+    rules = re.findall(r'([^{}]+)\{([^{}]*)\}', css)
+    fallback = ' '.join(sels for sels, _ in rules if '.no-flex-gap' in sels)
+    missing = [
+        sel
+        for sels, body in rules
+        if re.search(r'display:\s*(inline-)?flex', body)
+        and re.search(r'(^|[;\s])gap:', body)
+        and '.no-flex-gap' not in sels
+        for sel in (s.strip() for s in sels.split(','))
+        if sel not in FLEX_GAP_EXEMPT and f'.no-flex-gap {sel}' not in fallback
+    ]
+    assert not missing, missing
+    head = (UI_DIR / 'index.html').read_text(encoding='utf-8').split('</head>')[0]
+    assert "className += ' no-flex-gap'" in head

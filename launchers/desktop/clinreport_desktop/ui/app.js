@@ -171,7 +171,7 @@ function renderComponents(state) {
   const updateChip = update.newer ? updateControl(update) : null;
   const modules = state.modules.map((m) => el('span', { className: m.ok ? 'chip ok' : 'chip err', title: m.version ? `версия ${m.version}` : 'не установлен' }, m.name));
   $('components').replaceChildren(
-    el('dt', {}, 'ClinReport'), el('dd', {}, v.app, updateChip),
+    el('dt', {}, 'ClinReport'), el('dd', {}, el('span', {}, v.app), updateChip),
     el('dt', {}, 'Расширение'), el('dd', {}, v.extension),
     el('dt', {}, 'OpenCRAVAT'), el('dd', {}, v.opencravat),
     el('dt', {}, 'Python'), el('dd', {}, v.python),
