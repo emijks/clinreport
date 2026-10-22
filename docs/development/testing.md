@@ -26,8 +26,24 @@ directly. Shared paths and the route loader are in `tests/helpers.py`; fixtures 
 | `core/` | `service` (open, process default/LPWGS, render with edits, settings), templates (store, checks, upload over aiohttp), database (Postgres code against SQLite), login mode and settings scopes, CLINBIO, `float2percent` |
 | `routes/` | `route.py` loaded the way OpenCRAVAT does, mounted on aiohttp (OC 2.x) and Flask (OC 3.x): JSON errors, content types, login |
 | `cli/` | the CLI end to end on a trio (needs examples) |
-| `desktop/` | launcher logic without a window: config, module sync, single instance, updates (version order, release choice, checked download, silent installer), session logs (files, retention, thread errors, the page's messages) |
+| `desktop/` | launcher logic without a window: config, module sync, single instance, updates (version order, release choice, checked download, silent installer), session logs (files, retention, thread errors, the page's messages), environments (probe without importing `cravat`, the version matrix, install/update/remove with rollback, the command for another OpenCRAVAT, leftover pid) |
 | `packaging/` | installer rules on the `.iss` source (AppId, what is deleted, mutex), `build.py` helpers (macOS wheel/otool parsing, stack consistency, one version number), `install_extension.py` |
+
+### Another OpenCRAVAT («Окружения»), end to end
+
+pytest uses fake installations. Before a release, run it against a real one on Windows — it must not touch the real
+`C:\open-cravat`, so map a scratch folder as the system drive OpenCRAVAT uses:
+
+```text
+py -3.11 -m venv <tmp>\oc229 && <tmp>\oc229\Scripts\python -m pip install "open-cravat==2.2.9" "setuptools<81"
+subst X: <tmp>\drive
+set SystemDrive=X: & set CLINREPORT_DATA_DIR=<tmp>\data
+packaging\dist\ClinReport\python\python -I -m clinreport_desktop
+```
+
+In «Окружения»: «Указать Python…» → `<tmp>\oc229\Scripts\python.exe`; «Установить» (downloads docxtpl… into the module's
+`lib/`); «Использовать» → «Обзор» shows «окружение oc229»; open an example result → «Заключение» → «Обработать»; switch back
+to «Встроенное». Afterwards `subst X: /d`.
 
 Not covered by pytest: the real OpenCRAVAT login, the Google Sheet (network), a real Postgres
 ([issue clinreport/001](../issues/clinreport/001-postgres-untested.md)), the browser page, the native save dialog.

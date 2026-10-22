@@ -614,5 +614,10 @@ def template_file(params: dict, caller: Caller = LOCAL) -> FileResult:
     return FileResult(store.path(template_id).read_bytes(), _safe_filename(item['title'], 'template.docx'), DOCX_MIME)
 
 
+def template_path(template_id: str) -> Path:
+    """The .docx behind a template (the desktop app shows it in Explorer / Finder; no HTTP route)."""
+    return _template_error(lambda: _store().path(str(template_id)))
+
+
 def template_fields(params: dict, caller: Caller = LOCAL) -> dict:
     return {kind: tpl.field_paths(kind) for kind in tpl.KINDS}

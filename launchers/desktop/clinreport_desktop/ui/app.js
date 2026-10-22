@@ -59,6 +59,42 @@ async function busy(button, action) {
   }
 }
 
+// --- modal window: one at a time; Esc, × and a click outside close it ---
+
+const modal = { kind: null, onClose: null, returnFocus: null };
+
+function openModal(kind, title, body, { onClose = null, wide = false } = {}) {
+  modal.kind = kind;
+  modal.onClose = onClose;
+  modal.returnFocus = document.activeElement;
+  $('modal-title').textContent = title;
+  $('modal-box').className = wide ? 'modal-box wide' : 'modal-box';
+  $('modal-body').replaceChildren(...[body].flat());
+  $('modal').hidden = false;
+  $('modal-close').focus();
+}
+
+function closeModal() {
+  if ($('modal').hidden) return;
+  const { onClose, returnFocus } = modal;
+  $('modal').hidden = true;
+  $('modal-body').replaceChildren();
+  Object.assign(modal, { kind: null, onClose: null, returnFocus: null });
+  if (returnFocus && returnFocus.isConnected) returnFocus.focus();
+  if (onClose) onClose();
+}
+
+function trapFocus(e) {
+  if (e.key === 'Escape') { e.preventDefault(); closeModal(); return; }
+  if (e.key !== 'Tab') return;
+  const focusable = [...$('modal-box').querySelectorAll('button, input, select, textarea, summary')].filter((n) => !n.disabled);
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const lastOne = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); lastOne.focus(); }
+  else if (!e.shiftKey && document.activeElement === lastOne) { e.preventDefault(); first.focus(); }
+}
+
 const pad = (n) => String(n).padStart(2, '0');
 const duration = (s) => `${pad(Math.floor(s / 3600))}:${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
 const clock = (epoch) => { const d = new Date(epoch * 1000); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
@@ -76,7 +112,7 @@ function when(epoch) {
 
 // --- tabs ---
 
-const TABS = ['overview', 'templates', 'settings', 'log'];
+const TABS = ['overview', 'templates', 'environments', 'settings', 'log'];
 let currentTab = 'overview';
 function show(name) {
   currentTab = name;
@@ -85,6 +121,7 @@ function show(name) {
     $('p-' + t).hidden = t !== name;
   }
   if (name === 'templates') loadTemplates();
+  if (name === 'environments') loadEnvironments();
   if (name === 'settings') loadSettings();
   if (name === 'log') loadLog();
   if (name === 'overview') loadRecent();
@@ -97,6 +134,16 @@ const STATE_TEXT = {
   stopped: 'OpenCRAVAT остановлен', failed: 'OpenCRAVAT не запустился',
 };
 let last = null;
+let shuttingDown = false;
+
+// Called by the launcher (App._close_after_stopping) while the window closes: cover the page, stop polling.
+window.clinreportShutdown = function (text, done) {
+  shuttingDown = true;
+  $('shutdown').hidden = false;
+  $('shutdown-text').textContent = text;
+  $('shutdown-spinner').className = done ? 'spinner done' : 'spinner';
+};
+let shownEnvNotice = null;
 let serverCall = null;  // 'start' | 'stop' while the window waits for that call
 
 // Открыть: only while running. One server button: Остановить while running or starting (cancels it),
@@ -106,7 +153,7 @@ function renderControls() {
   const running = s === 'running';
   const waiting = Boolean(serverCall);
   $('open-oc').disabled = waiting || !running;
-  $('open-result').disabled = !running;
+  $('open-result').disabled = s === 'stopping';  // when stopped, opening a result starts OpenCRAVAT
   const stops = running || s === 'starting';
   const toggle = $('toggle-server');
   toggle.textContent = stops ? 'Остановить' : 'Запустить';
@@ -128,6 +175,7 @@ async function serverAction(method) {
 }
 
 async function refreshState() {
+  if (shuttingDown) return;
   let state;
   try {
     state = await call('state');
@@ -146,8 +194,7 @@ async function refreshState() {
     meta.push(el('span', {}, el('button', { type: 'button', className: 'link', onclick: () => busy(null, () => call('open_oc')) }, s.url)));
     meta.push(el('span', {}, 'запущен ', el('b', {}, clock(s.started_at))));
     meta.push(el('span', {}, 'время работы ', el('b', {}, duration(s.uptime))));
-  } else if (s.state === 'starting') {
-    meta.push(el('span', {}, 'Первый запуск после установки или обновления занимает до минуты.'));
+    if (s.environment && s.environment !== 'Встроенное') meta.push(el('span', {}, 'окружение ', el('b', {}, s.environment)));
   }
   $('hero-meta').replaceChildren(...meta);
   $('hero-error').hidden = s.state !== 'failed';
@@ -155,9 +202,10 @@ async function refreshState() {
 
   renderControls();
 
+  if (state.env_notice && state.env_notice !== shownEnvNotice) { shownEnvNotice = state.env_notice; notify('warn', state.env_notice); }
   const v = state.versions;
   $('brand-version').textContent = `версия ${v.app}`;
-  $('foot').textContent = `Данные: ${state.data_dir}`;
+  $('foot').title = `Открыть папку данных\n${state.data_dir}`;
   renderComponents(state);
   renderChecks(state);
   const bad = state.checks.templates_bad;
@@ -244,20 +292,29 @@ function renderChecks(state) {
 
 // --- recent results ---
 
+function queuedToast(result) {
+  if (result && result.queued) toast('OpenCRAVAT запускается — результат откроется, когда он будет готов');
+}
+
+async function openResult(path, target) {
+  queuedToast(await call('open_or_start', path, target));
+  refreshState();
+  loadRecent();
+}
+
 async function loadRecent() {
   const box = $('recent');
   let data;
   try { data = await call('recent'); } catch (error) { box.replaceChildren(el('p', { className: 'empty' }, error.message)); return; }
   if (!data.items.length) {
-    box.replaceChildren(el('p', { className: 'empty' },
-      'Здесь появятся открытые файлы. Нажмите «Открыть результат…» и выберите .sqlite из OpenCRAVAT.'));
+    box.replaceChildren(el('p', { className: 'empty' }, 'Результатов пока нет.'));
     return;
   }
-  const running = last && last.server.state === 'running';
+  const stopping = Boolean(last && last.server.state === 'stopping');
   box.replaceChildren(...data.items.map((r) => {
     const acts = r.exists ? [
-      el('button', { className: 'btn sm', type: 'button', disabled: !running, onclick: (e) => busy(e.currentTarget, async () => { await call('open_result', r.path, 'viewer'); loadRecent(); }) }, 'Просмотр'),
-      el('button', { className: 'btn sm primary', type: 'button', disabled: !running, onclick: (e) => busy(e.currentTarget, async () => { await call('open_result', r.path, 'report'); loadRecent(); }) }, 'Заключение'),
+      el('button', { className: 'btn sm', type: 'button', disabled: stopping, onclick: (e) => busy(e.currentTarget, () => openResult(r.path, 'viewer')) }, 'Просмотр'),
+      el('button', { className: 'btn sm primary', type: 'button', disabled: stopping, onclick: (e) => busy(e.currentTarget, () => openResult(r.path, 'report')) }, 'Заключение'),
     ] : [el('button', { className: 'btn sm ghost', type: 'button', onclick: async () => { await call('forget_result', r.path); loadRecent(); } }, 'Убрать')];
     const sub = [];
     if (!r.exists) sub.push(el('span', { className: 'chip warn' }, 'файл не найден'));
@@ -266,20 +323,18 @@ async function loadRecent() {
       sub.push(r.marked ? el('span', { className: 'chip info' }, `отмечено ${r.marked}`) : el('span', { className: 'chip plain' }, 'нет отметок'));
     }
     sub.push(el('span', {}, when(r.opened)));
-    sub.push(el('span', { className: 'mono' }, r.dir));
     return el('div', { className: r.exists ? 'item' : 'item missing' },
-      el('div', { className: 'name' }, r.name), el('div', { className: 'acts' }, acts), el('div', { className: 'sub' }, sub));
+      el('div', { className: 'name', title: r.path }, r.name), el('div', { className: 'acts' }, acts), el('div', { className: 'sub' }, sub));
   }));
 }
 
 // --- templates ---
 
-const tpl = { listing: null, open: new Set(), confirm: null, adding: null };
+const tpl = { listing: null, open: new Set(), confirm: null };
 
 async function loadTemplates() {
   await busy(null, async () => {
     tpl.listing = await call('templates');
-    $('add-kind').replaceChildren(...Object.entries(tpl.listing.kinds).map(([k, title]) => el('option', { value: k }, title)));
     renderTemplates();
   });
 }
@@ -306,18 +361,12 @@ function renderTemplates() {
         }) }, 'Удалить'),
         el('button', { className: 'btn sm ghost', type: 'button', onclick: () => { tpl.confirm = null; renderTemplates(); } }, 'Отмена')));
     } else {
-      acts.push(el('button', { className: 'btn sm', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
-        const r = await call('template_save', t.id); if (!r.cancelled) toast(`Сохранено: ${r.path}`);
-      }) }, 'Сохранить…'));
+      acts.push(el('button', { className: 'btn sm', type: 'button', title: t.builtin ? 'Встроенный шаблон заменяется при обновлении: правьте его копию' : null,
+        onclick: (e) => busy(e.currentTarget, () => call('template_reveal', t.id)) }, 'Открыть папку'));
       acts.push(el('button', { className: 'btn sm', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
         t.check = await call('template_check', t.id); tpl.open.add(t.id); renderTemplates();
       }) }, 'Проверить'));
       if (!t.builtin && listing.editable) {
-        acts.push(el('button', { className: 'btn sm', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
-          const file = await call('pick_docx'); if (file.cancelled) return;
-          const r = await call('template_add', file.path, t.title, t.kind, t.id);
-          tpl.open.add(r.template.id); toast(`Шаблон «${t.title}» заменён`); await loadTemplates(); refreshState();
-        }) }, 'Заменить…'));
         acts.push(el('button', { className: 'btn sm ghost danger', type: 'button', onclick: () => { tpl.confirm = t.id; renderTemplates(); } }, 'Удалить'));
       }
     }
@@ -339,18 +388,22 @@ function renderTemplates() {
 async function startAdd() {
   const file = await call('pick_docx');
   if (file.cancelled) return;
-  tpl.adding = file;
-  $('add-file').value = file.path;
-  $('add-title').value = file.title;
-  $('add-form').hidden = false;
-  $('add-title').focus();
-  $('add-title').select();
+  const kinds = tpl.listing ? tpl.listing.kinds : {};
+  const title = el('input', { type: 'text', required: true, autocomplete: 'off', value: file.title });
+  const kind = el('select', {}, Object.entries(kinds).map(([k, name]) => el('option', { value: k }, name)));
+  const submit = el('button', { className: 'btn primary', type: 'submit' }, 'Добавить');
+  const form = el('form', { className: 'stack', onsubmit: (e) => { e.preventDefault(); busy(submit, () => submitAdd(file.path, title.value.trim(), kind.value)); } },
+    el('label', { className: 'field' }, 'Файл', el('input', { type: 'text', readonly: true, value: file.path })),
+    el('div', { className: 'fields' }, el('label', { className: 'field' }, 'Название', title), el('label', { className: 'field' }, 'Для документа', kind)),
+    el('div', { className: 'row end' }, el('button', { className: 'btn ghost', type: 'button', onclick: closeModal }, 'Отмена'), submit));
+  openModal('add', 'Новый шаблон', form);
+  title.focus();
+  title.select();
 }
 
-async function submitAdd() {
-  const r = await call('template_add', tpl.adding.path, $('add-title').value.trim(), $('add-kind').value, '');
-  $('add-form').hidden = true;
-  tpl.adding = null;
+async function submitAdd(path, title, kind) {
+  const r = await call('template_add', path, title, kind, '');
+  closeModal();
   tpl.open.add(r.template.id);
   if (r.template.check.ok) toast(`Шаблон «${r.template.title}» добавлен и проверен`);
   else notify('warn', `Шаблон «${r.template.title}» добавлен, но в нём есть поля, которых нет в данных заключения.`);
@@ -358,18 +411,14 @@ async function submitAdd() {
   refreshState();
 }
 
-async function toggleFields() {
-  const box = $('fields-box');
-  const button = $('fields-tpl');
-  if (!box.hidden) { box.hidden = true; button.setAttribute('aria-expanded', 'false'); return; }
+async function showFields() {
   const fields = await call('template_fields');
   const kinds = tpl.listing ? tpl.listing.kinds : {};
-  box.replaceChildren(el('h3', {}, 'Поля для шаблонов'),
-    el('p', { className: 'hint' }, 'Поле вида p_variants[].gene используется внутри цикла: {%tr for v in p_variants %} … {{ v.gene }} … {%tr endfor %}.'),
-    el('div', { className: 'fields-cols' }, Object.entries(fields).map(([kind, list]) => el('div', {},
-      el('b', {}, kinds[kind] || kind), el('ul', {}, list.map((f) => el('li', {}, f)))))));
-  box.hidden = false;
-  button.setAttribute('aria-expanded', 'true');
+  openModal('fields', 'Поля для шаблонов', [
+    el('p', { className: 'hint', style: 'margin:0 0 12px' }, 'Поле вида p_variants[].gene используется внутри цикла: {%tr for v in p_variants %} … {{ v.gene }} … {%tr endfor %}.'),
+    el('div', { className: 'fields-cols' }, Object.entries(fields).map(([k, list]) => el('div', {},
+      el('b', {}, kinds[k] || k), el('ul', {}, list.map((f) => el('li', {}, f)))))),
+  ], { wide: true });
 }
 
 // --- settings ---
@@ -385,6 +434,7 @@ async function loadSettings() {
     $('s-template').replaceChildren(...s.default_templates.map((t) => el('option', { value: t.id }, t.title)));
     $('s-template').value = s.default_template;
     $('s-browser-at-start').checked = Boolean(s.launcher.open_browser_at_start);
+    $('s-start-at-launch').checked = Boolean(s.launcher.start_server_at_launch);
     $('s-autostart').checked = Boolean(s.launcher.autostart);
     $('s-prerelease').checked = Boolean(s.launcher.update_prerelease);
     $(s.launcher.port_mode === 'fixed' ? 's-port-fixed' : 's-port-auto').checked = true;
@@ -406,7 +456,8 @@ function renderRu() {
 async function saveSettings() {
   const report = { clinician: $('s-clinician').value, template: $('s-template').value };
   const launcher = {
-    open_browser_at_start: $('s-browser-at-start').checked, autostart: $('s-autostart').checked,
+    open_browser_at_start: $('s-browser-at-start').checked, start_server_at_launch: $('s-start-at-launch').checked,
+    autostart: $('s-autostart').checked,
     update_prerelease: $('s-prerelease').checked,
     port_mode: $('s-port-fixed').checked ? 'fixed' : 'auto', port: Number($('s-port-value').value) || 8080,
   };
@@ -414,6 +465,345 @@ async function saveSettings() {
   toast('Настройки сохранены');
   if (result.restart_needed) notify('warn', 'Новый порт начнёт действовать после перезапуска сервера (кнопки «Остановить» → «Запустить»).');
   refreshState();
+}
+
+// --- environments ---
+
+const KIND = {
+  builtin: 'встроенное', venv: 'pip · venv', conda: 'conda', pipx: 'pipx', pyenv: 'pyenv',
+  system: 'системный Python', installer: 'установщик OpenCRAVAT', data: 'только данные',
+};
+const KIND_WORDS = {
+  builtin: 'Python и OpenCRAVAT поставляются вместе с ClinReport и обновляются вместе с ним.',
+  venv: 'OpenCRAVAT установлен через pip в виртуальное окружение Python.',
+  conda: 'OpenCRAVAT установлен в окружение conda.',
+  pipx: 'OpenCRAVAT установлен через pipx.',
+  pyenv: 'OpenCRAVAT установлен в Python, которым управляет pyenv.',
+  system: 'OpenCRAVAT установлен в общий Python компьютера.',
+  installer: 'OpenCRAVAT установлен его собственным установщиком.',
+  data: 'Найдена папка OpenCRAVAT (модули, задания), но Python, в котором он установлен, не найден.',
+};
+const LEVEL_CHIP = { ok: 'ok', warn: 'warn', bad: 'err' };
+// open: the environment whose «Настройки» window is open; drawn: what that window shows, to redraw only on change
+const envUi = { data: null, open: null, tab: 'info', details: {}, confirm: null, pkgQuery: '', fetching: false, drawn: '' };
+
+const envBusy = () => Boolean(envUi.data && (envUi.data.search.running
+  || Object.values(envUi.data.jobs).some((j) => j.state === 'running')));
+
+let lastEnvLoad = 0;
+async function loadEnvironments(force) {
+  if (envUi.fetching) return;
+  if (!force && !envBusy() && Date.now() - lastEnvLoad < 5000 && envUi.data) return;
+  envUi.fetching = true;
+  try {
+    const before = envUi.data;
+    envUi.data = await call('env_list');
+    lastEnvLoad = Date.now();
+    // a job just finished: forget cached details so the packages/modules shown are fresh
+    for (const [id, job] of Object.entries(envUi.data.jobs)) {
+      const was = before && before.jobs[id];
+      if (was && was.state === 'running' && job.state !== 'running') {
+        delete envUi.details[id];
+        if (job.state === 'done') toast(job.action === 'install' ? `Модули ClinReport ${job.version} установлены` : 'Модули ClinReport удалены');
+      }
+    }
+    if (before && before.search.running && !envUi.data.search.running) envUi.details = {};
+    renderEnvironments();
+  } catch (error) {
+    notify('err', error.message || String(error));
+  } finally {
+    envUi.fetching = false;
+  }
+}
+
+async function startSearch() {
+  await call('env_search');
+  openModal('search', 'Поиск окружений', el('div', { className: 'env-search', id: 'search-body' }), {
+    onClose: () => { if (envUi.data && envUi.data.search.running) call('env_search_cancel').catch(() => {}); },
+  });
+  await loadEnvironments(true);
+}
+
+function renderEnvironments() {
+  const data = envUi.data;
+  if (!data) return;
+  $('env-search').disabled = data.search.running;
+  renderSearch(data.search);
+  $('env-list').replaceChildren(...data.items.map(envRow));
+  renderEnvModal();
+}
+
+async function addPython() {
+  const r = await call('env_add');
+  if (r.cancelled) return;
+  toast('Окружение добавлено');
+  await loadEnvironments(true);
+  openEnv(r.id);
+}
+
+function renderSearch(s) {
+  const box = $('search-body');
+  if (modal.kind !== 'search' || !box) return;
+  if (s.running) {
+    if (box.dataset.state !== 'running') {
+      box.dataset.state = 'running';
+      box.replaceChildren(
+        el('div', { className: 'shutdown-step' }, el('span', { className: 'spinner', 'aria-hidden': 'true' }), el('b', {}, s.phase || 'Поиск…')),
+        el('div', { className: 'bar busy' }, el('i')),
+        el('span', { className: 'hint counts', style: 'margin:0' }),
+        el('div', { className: 'row end' }, el('button', { className: 'btn', type: 'button', onclick: closeModal }, 'Остановить поиск')));
+    }
+    box.querySelector('.counts').textContent = s.total ? `проверено ${s.checked} из ${s.total} · найдено ${s.found}` : 'собираю список Python…';
+    box.querySelector('.bar').className = s.total ? 'bar' : 'bar busy';
+    box.querySelector('.bar i').style.width = s.total ? `${Math.round((100 * s.checked) / s.total)}%` : '';
+    return;
+  }
+  if (box.dataset.state === 'done') return;
+  box.dataset.state = 'done';
+  const found = s.cancelled ? 'Поиск остановлен.'
+    : s.found ? `Найдено окружений с OpenCRAVAT: ${s.found}. Они добавлены в список.` : 'Других окружений с OpenCRAVAT не найдено.';
+  const problems = s.errors.length
+    ? el('details', {}, el('summary', { className: 'hint' }, `Не удалось проверить: ${s.errors.length}`),
+      el('pre', { className: 'log', style: 'max-height:140px' }, s.errors.join('\n')))
+    : null;
+  const done = el('button', { className: 'btn primary', type: 'button', onclick: closeModal }, 'Готово');
+  box.replaceChildren(el('span', {}, found), ...(problems ? [problems] : []), el('div', { className: 'row end' }, done));
+  done.focus();
+}
+
+// One row per environment: «Использовать» switches to it, «Настройки» opens everything else in a modal window.
+function envRow(env) {
+  const data = envUi.data;
+  const v = env.verdict || {};
+  const chosen = env.id === data.chosen;
+  const jobRunning = Object.values(data.jobs).some((j) => j.state === 'running');
+  const facts = env.kind === 'data'
+    ? [el('span', {}, 'Python не найден'), el('span', {}, `модулей: ${env.modules.count}`)]
+    : [el('span', {}, `Python ${env.python_version}`), el('span', {}, `OpenCRAVAT ${env.opencravat}`), el('span', {}, `модулей: ${env.modules.count}`)];
+  const chips = [];
+  if (env.running_here) chips.push(el('span', { className: 'chip ok' }, data.server.state === 'running' ? 'работает' : 'запускается'));
+  const job = data.jobs[env.id];
+  if (job && job.state === 'running') chips.push(el('span', { className: 'chip info' }, job.action === 'install' ? 'установка…' : 'удаление…'));
+  else if (env.kind !== 'builtin' && !v.can_run) {
+    chips.push(el('button', { type: 'button', className: `chip ${LEVEL_CHIP[v.level] || 'plain'}`, title: v.summary || null,
+      onclick: () => openEnv(env.id, v.can_install ? 'modules' : 'info') }, v.can_install ? 'нужны модули ClinReport' : 'не подходит'));
+  }
+  let use;
+  if (env.kind === 'data') use = el('button', { className: 'btn sm primary', type: 'button', onclick: (e) => busy(e.currentTarget, addPython) }, 'Указать Python…');
+  else if (chosen) use = el('button', { className: 'btn sm', type: 'button', disabled: true }, 'Используется');
+  else {
+    use = el('button', { className: 'btn sm primary', type: 'button', disabled: !v.can_run || jobRunning,
+      title: v.can_run ? null : 'Сначала устраните причины — они в «Настройках»', onclick: () => confirmUse(env) }, 'Использовать');
+  }
+  return el('div', { className: chosen ? 'env-row chosen' : 'env-row' },
+    el('span', { className: 'radio', 'aria-hidden': 'true' }),
+    el('span', { className: 'name' }, env.name, el('span', { className: 'kind' }, KIND[env.kind] || env.kind), chips),
+    el('span', { className: 'sub' }, facts),
+    el('span', { className: 'acts' }, use,
+      el('button', { className: 'btn sm', type: 'button', 'aria-haspopup': 'dialog', onclick: () => openEnv(env.id) }, 'Настройки')));
+}
+
+async function useEnv(env) {
+  try {
+    const r = await call('env_use', env.id);
+    closeModal();
+    toast(r.restarted ? `OpenCRAVAT перезапускается в окружении «${env.name}»` : `Выбрано окружение «${env.name}»`);
+  } finally { await loadEnvironments(true); refreshState(); }
+}
+
+// A stopped OpenCRAVAT just remembers the choice; a running one restarts, so that is asked first.
+function confirmUse(env) {
+  const running = Boolean(last && ['running', 'starting'].includes(last.server.state));
+  if (!running) { busy(null, () => useEnv(env)); return; }
+  const go = el('button', { className: 'btn primary', type: 'button', onclick: (e) => busy(e.currentTarget, () => useEnv(env)) }, 'Переключить');
+  openModal('use', 'Переключить окружение?', [
+    el('p', { style: 'margin:0 0 14px' }, `OpenCRAVAT перезапустится в окружении «${env.name}». Открытые в браузере результаты нужно будет открыть заново.`),
+    el('div', { className: 'row end' }, el('button', { className: 'btn ghost', type: 'button', onclick: closeModal }, 'Отмена'), go)]);
+  go.focus();
+}
+
+// --- «Настройки» of one environment: a modal window with tabs ---
+
+const ENV_TABS = [['info', 'Сведения'], ['modules', 'Модули ClinReport'], ['paths', 'Пути'], ['pkgs', 'Пакеты Python'], ['mods', 'Модули OpenCRAVAT'], ['run', 'Запуск']];
+
+function openEnv(id, tab = 'info') {
+  const env = envUi.data && envUi.data.items.find((e) => e.id === id);
+  if (!env) return;
+  Object.assign(envUi, { open: id, tab, confirm: null, drawn: '' });
+  openModal('env', env.name, el('div', { id: 'env-modal' }), { wide: true, onClose: () => { envUi.open = null; envUi.confirm = null; } });
+  renderEnvModal();
+}
+
+function renderEnvModal() {
+  const box = $('env-modal');
+  if (modal.kind !== 'env' || !box) return;
+  const data = envUi.data;
+  const env = data.items.find((e) => e.id === envUi.open);
+  if (!env) { closeModal(); return; }
+  const job = data.jobs[env.id];
+  const jobRunning = Object.values(data.jobs).some((j) => j.state === 'running');
+  // the list is polled every second: redraw only when something shown here changed (keeps focus and the package filter)
+  const drawn = JSON.stringify([env, job, jobRunning, data.chosen, data.server.state, data.bundled_version, envUi.tab, envUi.confirm]);
+  if (drawn === envUi.drawn) return;
+  envUi.drawn = drawn;
+  const tabs = ENV_TABS.filter(([id]) => env.kind !== 'data' || !['pkgs', 'run'].includes(id));
+  if (!tabs.some(([id]) => id === envUi.tab)) envUi.tab = 'info';
+  const seg = el('div', { className: 'seg', role: 'tablist' }, tabs.map(([id, label]) => el('button', {
+    type: 'button', role: 'tab', 'aria-selected': String(envUi.tab === id),
+    onclick: () => { envUi.tab = id; envUi.confirm = null; renderEnvModal(); },
+  }, id === 'pkgs' && env.package_count ? `${label} (${env.package_count})` : label)));
+  const content = el('div', { className: 'env-tab' });
+  box.replaceChildren(seg, content);
+  if (envUi.tab === 'info') content.replaceChildren(...envInfo(env, jobRunning));
+  else if (envUi.tab === 'modules') content.replaceChildren(modulesSection(env, job, jobRunning));
+  else fillPro(env, content, envUi.tab);
+}
+
+function envInfo(env, jobRunning) {
+  const data = envUi.data;
+  const v = env.verdict || { level: 'ok', reasons: [] };
+  const actions = [];
+  if (env.kind === 'data') actions.push(el('button', { className: 'btn primary', type: 'button', onclick: (e) => busy(e.currentTarget, addPython) }, 'Указать Python…'));
+  if (env.kind !== 'builtin' && env.kind !== 'data') actions.push(el('button', { className: 'btn', type: 'button', disabled: jobRunning, onclick: (e) => busy(e.currentTarget, async () => {
+    await call('env_refresh', env.id); delete envUi.details[env.id]; await loadEnvironments(true); toast('Сведения обновлены');
+  }) }, 'Проверить заново'));
+  if (env.kind !== 'builtin' && env.id !== data.chosen) actions.push(el('button', { className: 'btn ghost danger', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
+    await call('env_forget', env.id); closeModal(); await loadEnvironments(true); toast('Окружение убрано из списка; его файлы не тронуты');
+  }) }, 'Убрать из списка'));
+  return [
+    el('div', { className: 'facts', style: 'margin:0' },
+      env.python_version ? el('span', {}, 'Python ', el('b', {}, env.python_version)) : null,
+      env.opencravat ? el('span', {}, 'OpenCRAVAT ', el('b', {}, env.opencravat)) : null,
+      el('span', {}, 'модулей ', el('b', {}, env.modules.count)),
+      env.package_count ? el('span', {}, 'пакетов ', el('b', {}, env.package_count)) : null,
+      el('span', {}, 'найдено: ', el('b', {}, env.source || '—'))),
+    el('p', { className: 'hint' }, KIND_WORDS[env.kind] || ''),
+    env.kind === 'builtin' ? null : el('div', { className: `verdict ${v.level}`, style: 'margin-top:12px' },
+      el('b', {}, v.summary),
+      v.reasons.length ? el('ul', {}, v.reasons.map((r) => el('li', { className: r.level }, r.text))) : null),
+    actions.length ? el('div', { className: 'row', style: 'margin-top:14px' }, actions) : null,
+  ].filter(Boolean);
+}
+
+function modulesSection(env, job, jobRunning) {
+  const data = envUi.data;
+  const ours = env.modules.ours || {};
+  const latest = data.bundled_version;
+  const state = (version) => {
+    if (!version) return el('span', { className: 'chip plain' }, 'не установлен');
+    if (latest && version === latest) return el('span', { className: 'chip ok' }, 'актуальна');
+    return el('span', { className: 'chip warn' }, `в программе ${latest}`);
+  };
+  const rows = [['clinreport', 'webapps', 'Окно заключения'], ['wgclinreport', 'webviewerwidgets', 'Кнопка на вкладке Summary']].map(([id, type, title]) =>
+    el('tr', {}, el('td', {}, el('div', {}, title), el('div', { className: 'mono hint', style: 'margin:0' }, `${type}/${id}`)),
+      el('td', { className: 'mono' }, ours[id] || '—'), el('td', {}, state(ours[id]))));
+  const section = el('div', {},
+    el('table', { className: 'mods' }, el('thead', {}, el('tr', {}, el('th', {}, 'Модуль'), el('th', {}, 'Версия'), el('th', {}, 'Состояние'))), el('tbody', {}, rows)));
+
+  if (env.kind === 'builtin') {
+    section.append(el('p', { className: 'hint' }, 'Во встроенное окружение модули ставятся сами при каждом запуске.'));
+    return section;
+  }
+  const v = env.verdict || {};
+  const installed = ours.clinreport && ours.wgclinreport;
+  const fresh = installed && ours.clinreport === latest;
+  if (v.can_install) {
+    const install = (source) => busy(null, async () => {
+      envUi.confirm = null;
+      const r = await call('env_install', env.id, source);
+      if (!r.cancelled) await loadEnvironments(true);
+    });
+    const controls = el('div', { className: 'row', style: 'margin-top:12px' },
+      el('button', { className: fresh ? 'btn' : 'btn primary', type: 'button', disabled: jobRunning,
+        onclick: () => { envUi.confirm = 'install'; renderEnvModal(); } },
+      fresh ? `Переустановить ${latest}` : installed ? `Обновить до ${latest}` : `Установить ${latest}`),
+      el('button', { className: 'btn ghost', type: 'button', disabled: jobRunning, onclick: () => install('zip') }, 'Из файла .zip…'),
+      installed ? el('button', { className: 'btn ghost danger', type: 'button', disabled: jobRunning || env.running_here,
+        title: env.running_here ? 'Сначала переключитесь на другое окружение' : null,
+        onclick: () => { envUi.confirm = 'remove'; renderEnvModal(); } }, 'Удалить модули') : null);
+    section.append(controls);
+    if (envUi.confirm === 'install') {
+      const deps = (v.reasons || []).find((r) => r.text.startsWith('При установке'));
+      section.append(el('div', { className: 'confirm-box', style: 'margin-top:10px' },
+        el('span', {}, `В папку ${env.modules_dir} будут записаны модули ClinReport ${latest} (webapps/clinreport и webviewerwidgets/wgclinreport).`
+          + (installed ? ' Прежние сохранятся в резервной копии.' : '') + (deps ? ' ' + deps.text : ' Пакеты Python этого окружения не меняются.')
+          + (env.running_here ? ' OpenCRAVAT перезапустится.' : '')),
+        el('button', { className: 'btn sm primary', type: 'button', onclick: () => install('bundle') }, 'Установить'),
+        el('button', { className: 'btn sm ghost', type: 'button', onclick: () => { envUi.confirm = null; renderEnvModal(); } }, 'Отмена')));
+    }
+    if (envUi.confirm === 'remove') {
+      section.append(el('div', { className: 'confirm-box', style: 'margin-top:10px' },
+        el('span', {}, `Папки webapps/clinreport и webviewerwidgets/wgclinreport будут убраны из ${env.modules_dir} (копия сохранится в папке данных ClinReport). Остальные модули и задания не трогаются.`),
+        el('button', { className: 'btn sm danger', type: 'button', onclick: (e) => busy(e.currentTarget, async () => {
+          envUi.confirm = null; await call('env_remove', env.id); await loadEnvironments(true);
+        }) }, 'Удалить'),
+        el('button', { className: 'btn sm ghost', type: 'button', onclick: () => { envUi.confirm = null; renderEnvModal(); } }, 'Отмена')));
+    }
+  } else if (env.kind !== 'data') {
+    section.append(el('p', { className: 'hint' }, 'Установить модули ClinReport сюда нельзя — причины на вкладке «Сведения».'));
+  }
+  if (job) {
+    const title = job.state === 'running' ? (job.action === 'install' ? 'Установка…' : 'Удаление…')
+      : job.state === 'done' ? 'Готово' : 'Не получилось — ничего не изменено';
+    section.append(el('div', { className: 'job' },
+      job.state === 'running' ? el('div', { className: 'bar busy' }, el('i')) : null,
+      el('b', {}, title), el('ol', {}, job.steps.map((s) => el('li', {}, s))),
+      job.error ? el('div', { className: 'err' }, job.error) : null));
+  }
+  return section;
+}
+
+async function fillPro(env, box, tab) {
+  if (tab === 'paths') {
+    const rows = [
+      ['Python', 'интерпретатор', env.python], ['Команда oc', 'oc', env.oc_command], ['Пакет OpenCRAVAT', 'package_path', env.package_path],
+      ['Настройки OpenCRAVAT', 'cravat-system.yml', env.conf_exists ? env.conf_path : null], ['Папка настроек', 'conf_dir', env.conf_dir],
+      ['Модули', 'modules_dir', env.modules_dir], ['Задания', 'jobs_dir', env.jobs_dir], ['Рабочая папка', 'work_dir', env.work_dir],
+      ['Журналы', 'log_dir', env.log_dir], ['Пакеты из Store', 'python-packages', env.user_packages],
+    ].filter(([, , path]) => path !== undefined);
+    box.replaceChildren(el('dl', { className: 'paths' }, rows.flatMap(([label, key, path]) => [
+      el('dt', {}, label, el('small', {}, key)),
+      el('dd', {}, path ? el('span', { className: 'mono' }, path) : el('span', { className: 'hint', style: 'margin:0' }, 'нет')),
+      el('div', { className: 'acts' }, path ? el('button', { className: 'btn sm ghost', type: 'button', onclick: () => busy(null, () => call('open_path', path)) }, 'Показать') : null),
+    ])));
+    return;
+  }
+  if (tab === 'mods') {
+    const types = Object.entries(env.modules.types || {});
+    box.replaceChildren(types.length
+      ? el('div', { className: 'mtypes' }, types.map(([t, n]) => el('div', { className: 'mtype' }, el('b', {}, n), t)))
+      : el('p', { className: 'empty' }, 'Модулей нет.'),
+    ...(env.kind !== 'builtin' && !env.modules.wgnote ? [el('p', { className: 'hint' }, 'Нет wgnote: колонку Note заполнять нельзя.')] : []));
+    return;
+  }
+  if (tab === 'run') {
+    const command = env.kind === 'builtin'
+      ? `"${env.oc_command}" gui --headless --port <порт>\nOPENCRAVAT_SYSTEM_CONF_PATH=${env.conf_path}`
+      : env.python ? `"${env.python}" -c "from cravat.oc import main; …" gui --headless --port <порт>\nCLINREPORT_CONF_DIR=<папка данных ClinReport>\\conf  (общие шаблоны и настройки)\nНастройки и модули этого OpenCRAVAT не меняются.` : 'Python не указан.';
+    box.replaceChildren(el('pre', { className: 'log', style: 'max-height:none' }, command));
+    return;
+  }
+  if (!envUi.details[env.id]) {
+    box.replaceChildren(el('p', { className: 'empty' }, 'Загрузка…'));
+    try { envUi.details[env.id] = await call('env_details', env.id); } catch (error) { box.replaceChildren(el('p', { className: 'empty' }, error.message)); return; }
+  }
+  const packages = envUi.details[env.id].packages || [];
+  const draw = () => {
+    const q = envUi.pkgQuery.trim().toLowerCase();
+    const shown = packages.filter((p) => !q || p.name.includes(q));
+    table.replaceChildren(...(shown.length ? shown.map((p) => el('tr', {}, el('td', {}, p.name), el('td', { className: 'v' }, p.version)))
+      : [el('tr', {}, el('td', { className: 'hint' }, 'Ничего не найдено'))]));
+  };
+  const table = el('tbody');
+  const search = el('input', { type: 'search', id: 'env-pkg-q', placeholder: 'Найти пакет', value: envUi.pkgQuery, 'aria-label': 'Найти пакет',
+    oninput: (e) => { envUi.pkgQuery = e.target.value; draw(); } });
+  const copy = el('button', { className: 'btn sm ghost', type: 'button', onclick: async () => {
+    const text = packages.map((p) => `${p.name}==${p.version}`).join('\n');
+    try { await navigator.clipboard.writeText(text); toast('Скопировано как requirements.txt'); } catch (e) { notify('err', 'Не удалось скопировать'); }
+  } }, 'Копировать как requirements.txt');
+  box.replaceChildren(el('div', { className: 'row', style: 'margin-bottom:8px' }, search, copy),
+    el('div', { className: 'pk-scroll' }, el('table', { className: 'pk' }, table)));
+  draw();
 }
 
 // --- log ---
@@ -457,19 +847,14 @@ async function copyDiagnostics() {
 
 function init() {
   TABS.forEach((t) => $('tab-' + t).addEventListener('click', () => show(t)));
-  $('open-result').addEventListener('click', (e) => busy(e.currentTarget, async () => { await call('choose_result'); loadRecent(); }).then(renderControls));
+  $('open-result').addEventListener('click', (e) => busy(e.currentTarget, async () => { queuedToast(await call('choose_result')); refreshState(); loadRecent(); }).then(renderControls));
   $('open-oc').addEventListener('click', (e) => busy(e.currentTarget, () => call('open_oc')).then(renderControls));
   $('toggle-server').addEventListener('click', () => {
     const s = last && last.server.state;
     serverAction(s === 'running' || s === 'starting' ? 'stop' : 'start');
   });
   $('add-tpl').addEventListener('click', (e) => busy(e.currentTarget, startAdd));
-  $('add-cancel').addEventListener('click', () => { $('add-form').hidden = true; tpl.adding = null; });
-  $('add-form').addEventListener('submit', (e) => { e.preventDefault(); busy($('add-submit'), submitAdd); });
-  $('sample-tpl').addEventListener('click', (e) => busy(e.currentTarget, async () => {
-    const r = await call('template_save', 'DZM'); if (!r.cancelled) toast(`Образец сохранён: ${r.path}`);
-  }));
-  $('fields-tpl').addEventListener('click', (e) => busy(e.currentTarget, toggleFields));
+  $('fields-tpl').addEventListener('click', (e) => busy(e.currentTarget, showFields));
   $('tpl-folder').addEventListener('click', () => busy(null, () => call('open_templates_folder')));
   $('settings-form').addEventListener('submit', (e) => { e.preventDefault(); busy($('settings-save'), saveSettings); });
   $('settings-reset').addEventListener('click', () => loadSettings());
@@ -478,12 +863,19 @@ function init() {
     toast(ru.state === 'ok' ? 'Аннотации обновлены' : 'Не удалось загрузить аннотации');
   }));
   $('open-data').addEventListener('click', () => busy(null, () => call('open_data_folder')));
+  $('foot').addEventListener('click', () => busy(null, () => call('open_data_folder')));
+  $('modal-close').addEventListener('click', closeModal);
+  $('modal').addEventListener('mousedown', (e) => { if (e.target === e.currentTarget) closeModal(); });
+  $('modal').addEventListener('keydown', trapFocus);
   $('open-logs').addEventListener('click', () => busy(null, () => call('open_logs_folder')));
   $('copy-diag').addEventListener('click', (e) => busy(e.currentTarget, copyDiagnostics));
+  $('env-search').addEventListener('click', (e) => busy(e.currentTarget, () => startSearch()));
+  $('env-add').addEventListener('click', (e) => busy(e.currentTarget, addPython));
 
   refreshState().then(loadRecent);
   setInterval(refreshState, 1000);
   setInterval(() => { if (currentTab === 'log') loadLog(); }, 3000);
+  setInterval(() => { if (currentTab === 'environments' || envBusy()) loadEnvironments(); }, 1000);
   setInterval(() => { if (currentTab === 'overview') loadRecent(); }, 15000);
   let wasRunning = false;
   setInterval(() => {  // re-enable the recent buttons as soon as the server is up

@@ -2,16 +2,18 @@
 
 The GUI's before_request hook sets g.is_multiuser / g.username; here a test header stands in for the login."""
 
+import sys
+
 import pytest
 from helpers import load_route_module
 
 flask = pytest.importorskip('flask')
 
 
-def make_app(multiuser):
+def make_app(multiuser, unavailable=False):
     route = load_route_module()
     handlers = {}
-    for method, path, func in route._flask_routes():
+    for method, path, func in route._unavailable_routes(flask=True) if unavailable else route._flask_routes():
         handlers.setdefault(path, {})[method] = func
 
     app = flask.Flask(__name__)
@@ -26,6 +28,15 @@ def make_app(multiuser):
         return handlers[action][flask.request.method](flask.request)
 
     return app.test_client()
+
+
+def test_missing_package_answers_503_instead_of_stopping_opencravat(monkeypatch):
+    for name in [m for m in sys.modules if m == 'clinreport_core' or m.startswith('clinreport_core.')]:
+        monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setitem(sys.modules, 'docxtpl', None)
+    client = make_app(multiuser=False, unavailable=True)
+    response = client.post('/webapps/clinreport/process', json={})
+    assert response.status_code == 503 and 'pip install docxtpl' in response.get_json()['error']
 
 
 def test_login_mode_requires_a_session(service):

@@ -1,6 +1,7 @@
 """route.py served by aiohttp, the way OpenCRAVAT 2.x mounts it."""
 
 import asyncio
+import sys
 
 import pytest
 from helpers import load_route_module
@@ -44,6 +45,22 @@ def test_open_process_render_over_http(service, trio_db):
         )
         assert "filename*=UTF-8''%D0%97%D0%B0%D0%BA" in response.headers['Content-Disposition']
         assert (await response.read())[:2] == b'PK'
+
+    run(with_client(check))
+
+
+def test_missing_package_answers_503_instead_of_stopping_opencravat(monkeypatch):
+    """OpenCRAVAT imports route.py while its GUI starts and does not catch errors: an exception here would stop it."""
+    for name in [m for m in sys.modules if m == 'clinreport_core' or m.startswith('clinreport_core.')]:
+        monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setitem(sys.modules, 'docxtpl', None)  # import docxtpl -> ImportError (name 'docxtpl')
+
+    async def check(client):
+        response = await client.get('/webapps/clinreport/open', params={'dbpath': 'x.sqlite'})
+        assert response.status == 503
+        assert 'не установлен пакет «docxtpl»' in (await response.json())['error']
+        response = await client.post('/webapps/clinreport/process', json={})
+        assert response.status == 503
 
     run(with_client(check))
 

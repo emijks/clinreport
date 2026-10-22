@@ -1,6 +1,6 @@
 [project]
 name = "clinreport"
-version = "3.0.0"
+version = "3.0.2"
 description = "Clinical .docx reports from OpenCRAVAT results: OpenCRAVAT extension, desktop app and CLI"
 readme = "README.md"
 requires-python = ">=3.11"
