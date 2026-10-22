@@ -114,3 +114,14 @@ def test_dmg_creation_retries_resource_busy(build, monkeypatch, tmp_path, failur
         with pytest.raises(build.subprocess.CalledProcessError):
             build.create_dmg(tmp_path, tmp_path / 'x.dmg', attempts=5, pause=0)
     assert calls[0] == 'sync' and calls.count('hdiutil') == min(failures + 1, 5)
+
+
+def test_empty_module_folders_are_caught(build, tmp_path):
+    """A cache with module folders but no files built an installer without hg38/wgnote (2026-10-21)."""
+    (tmp_path / 'mappers' / 'hg38').mkdir(parents=True)
+    (tmp_path / 'webviewerwidgets' / 'wgnote').mkdir(parents=True)
+    (tmp_path / 'webviewerwidgets' / 'wgnote' / 'wgnote.yml').write_text('version: 3.0.0\n', encoding='utf-8')
+    assert build.incomplete_modules(tmp_path, ['mappers/hg38', 'webviewerwidgets/wgnote', 'reporters/excelreporter']) == [
+        'mappers/hg38',
+        'reporters/excelreporter',
+    ]

@@ -195,6 +195,16 @@ def version_default() -> str:
         return 'dev'
 
 
+def incomplete_modules(modules_dir: Path, names: list) -> list:
+    """Modules (`type/name` or a bare base-module name) whose folder lacks `<name>.yml` — OpenCRAVAT ignores those."""
+    broken = []
+    for name in names:
+        folders = [modules_dir / name] if '/' in name else list(modules_dir.glob(f'*/{name}'))
+        if not folders or not all((folder / f'{folder.name}.yml').is_file() for folder in folders):
+            broken.append(name)
+    return broken
+
+
 def our_modules() -> list:
     """modules/<type>/<module> folders that have a <module>.yml."""
     return sorted(
@@ -251,6 +261,9 @@ def build(out: Path, version: str) -> Path:
 
     # Base modules are pinned to one commit: fetch once into the cache, so rebuilds need no GitHub access.
     cached = out.parent / '.cache' / f'modules-{modules_ref}'
+    if cached.is_dir() and incomplete_modules(cached, STACK['base_modules']):
+        print(f'cache {cached.name} is incomplete ({", ".join(incomplete_modules(cached, STACK["base_modules"]))}); fetching again')
+        shutil.rmtree(cached)
     if not cached.is_dir():
         partial = cached.with_name(cached.name + '.partial')
         shutil.rmtree(partial, ignore_errors=True)
@@ -273,6 +286,9 @@ def build(out: Path, version: str) -> Path:
             MODULES / rel, modules / rel, ignore=shutil.ignore_patterns('__pycache__', '*.pyc', '*.md')
         )
         print(f'our module: {rel}')
+    broken = incomplete_modules(modules, STACK['base_modules'] + managed)
+    if broken:
+        sys.exit(f'modules without their <name>.yml (an empty download?): {", ".join(broken)}')
 
     (app / 'bundle.json').write_text(
         json.dumps(

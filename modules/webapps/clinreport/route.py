@@ -10,7 +10,14 @@ so they are wrapped here for whichever GUI loaded the module.
 Both wrappers also tell the handlers who is calling: without login mode
 everyone is the local user; with `oc gui --multiuser` the OpenCRAVAT login is
 read from the GUI's session and requests without one get 401.
+
+OpenCRAVAT imports every webapp's route.py while the GUI starts, without catching
+errors: one that fails to import stops the whole GUI. If clinreport_core cannot be
+imported here (typically docxtpl missing from OpenCRAVAT's Python), every route
+answers 503 with what to install instead.
 """
+
+from __future__ import annotations  # the annotations name service.*, which may be missing
 
 import inspect
 import json
@@ -22,26 +29,43 @@ from urllib.parse import quote
 MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
 if MODULE_DIR not in sys.path:
     sys.path.insert(0, MODULE_DIR)
+# Packages the desktop app installed for this module when OpenCRAVAT's Python lacked them (docxtpl…). Appended, so
+# whatever OpenCRAVAT's own environment has always wins; lib/ only fills the gaps.
+LIB_DIR = os.path.join(MODULE_DIR, 'lib')
+if os.path.isdir(LIB_DIR) and LIB_DIR not in sys.path:
+    sys.path.append(LIB_DIR)
 
-from clinreport_core import service  # noqa: E402
+try:
+    from clinreport_core import service
+except Exception as exc:  # noqa: BLE001 - any import failure must leave OpenCRAVAT running
+    traceback.print_exc()
+    service = None
+    missing = getattr(exc, 'name', None) if isinstance(exc, ImportError) else None
+    UNAVAILABLE = (
+        f'ClinReport не может работать в этом OpenCRAVAT: не установлен пакет «{missing}». '
+        f'Установите его в Python, на котором работает OpenCRAVAT (pip install {missing}), и перезапустите OpenCRAVAT.'
+        if missing
+        else f'ClinReport не может работать в этом OpenCRAVAT: {exc!r}. Перезапустите OpenCRAVAT после исправления.'
+    )
 
+# (method, path, name of the clinreport_core.service function)
 HANDLERS = (
-    ('GET', 'open', service.open_result),
-    ('POST', 'process', service.process),
-    ('POST', 'render', service.render),
-    ('POST', 'upload', service.upload),
-    ('POST', 'similar', service.similar),
-    ('POST', 'send_clinbio', service.send_clinbio),
-    ('GET', 'settings', service.get_settings),
-    ('POST', 'settings', service.update_settings),
-    ('GET', 'ru_status', service.ru_status),
-    ('POST', 'ru_refresh', service.ru_refresh),
-    ('GET', 'templates', service.list_templates),
-    ('POST', 'template_add', service.add_template),
-    ('POST', 'template_delete', service.delete_template),
-    ('POST', 'template_check', service.check_template),
-    ('GET', 'template_file', service.template_file),
-    ('GET', 'template_fields', service.template_fields),
+    ('GET', 'open', 'open_result'),
+    ('POST', 'process', 'process'),
+    ('POST', 'render', 'render'),
+    ('POST', 'upload', 'upload'),
+    ('POST', 'similar', 'similar'),
+    ('POST', 'send_clinbio', 'send_clinbio'),
+    ('GET', 'settings', 'get_settings'),
+    ('POST', 'settings', 'update_settings'),
+    ('GET', 'ru_status', 'ru_status'),
+    ('POST', 'ru_refresh', 'ru_refresh'),
+    ('GET', 'templates', 'list_templates'),
+    ('POST', 'template_add', 'add_template'),
+    ('POST', 'template_delete', 'delete_template'),
+    ('POST', 'template_check', 'check_template'),
+    ('GET', 'template_file', 'template_file'),
+    ('GET', 'template_fields', 'template_fields'),
 )
 
 # Template uploads arrive base64-encoded in JSON; aiohttp's default body limit is 1 MB.
@@ -116,7 +140,7 @@ def _aiohttp_routes():
 
         return handler
 
-    return [(method, path, wrap(func, method)) for method, path, func in HANDLERS]
+    return [(method, path, wrap(getattr(service, name), method)) for method, path, name in HANDLERS]
 
 
 def _flask_caller() -> service.Caller:
@@ -157,7 +181,24 @@ def _flask_routes():
 
         return handler
 
-    return [(method, path, wrap(func, method)) for method, path, func in HANDLERS]
+    return [(method, path, wrap(getattr(service, name), method)) for method, path, name in HANDLERS]
+
+
+def _unavailable_routes(flask: bool):
+    """Every route answers 503 with UNAVAILABLE; the review page shows the message."""
+    body = _dumps({'error': UNAVAILABLE})
+    if flask:
+        from flask import Response
+
+        def handler(request):
+            return Response(body, status=503, mimetype='application/json')
+    else:
+        from aiohttp import web
+
+        async def handler(request):
+            return web.Response(text=body, status=503, content_type='application/json')
+
+    return [(method, path, handler) for method, path, _name in HANDLERS]
 
 
 def _loaded_by_flask_gui() -> bool:
@@ -175,4 +216,7 @@ def _loaded_by_flask_gui() -> bool:
     return False  # imported directly (tests): aiohttp
 
 
-routes = _flask_routes() if _loaded_by_flask_gui() else _aiohttp_routes()
+if service is None:
+    routes = _unavailable_routes(_loaded_by_flask_gui())
+else:
+    routes = _flask_routes() if _loaded_by_flask_gui() else _aiohttp_routes()

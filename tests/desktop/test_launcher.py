@@ -51,6 +51,22 @@ def test_recent_results_are_unique_newest_first_and_capped(env):
     assert 'r0.sqlite' not in [Path(r['path']).name for r in config.load()['recent']]
 
 
+def test_recent_results_include_jobs_opened_in_the_browser(env):
+    import os
+
+    jobs = env / 'jobs'
+    for job, name, age in (('261016-125805', 'trio1', 300), ('261020-150840', 'pah2', 100)):
+        (jobs / 'default' / job).mkdir(parents=True)
+        result = jobs / 'default' / job / f'{name}.sqlite'
+        result.write_bytes(b'')
+        os.utime(result, (time.time() - age, time.time() - age))
+    (jobs / 'default' / '261020-150840' / 'pah2.log').write_text('', encoding='utf-8')
+    config.remember_result(str(jobs / 'default' / '261016-125805' / 'trio1.sqlite'))  # opened just now, from the window
+    names = [Path(r['path']).name for r in config.recent_results(jobs)]
+    assert names == ['trio1.sqlite', 'pah2.sqlite']  # newest first, each once, only results
+    assert [Path(r['path']).name for r in config.recent_results(env / 'nowhere')] == ['trio1.sqlite']
+
+
 def test_sync_replaces_managed_modules_and_keeps_others(env):
     server.sync_modules()
     modules = paths.data_dir() / 'modules'

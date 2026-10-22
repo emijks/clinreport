@@ -2,7 +2,7 @@
 
 Ported from clinreport/database.py without pandas (it only served the sheet
 download and Postgres I/O), so the module installs into any OpenCRAVAT Python.
-VariantSource is unchanged.
+VariantSource also reads the Note column of OpenCRAVAT >= 2.3.1 (base__note_variant).
 """
 
 from __future__ import annotations
@@ -126,21 +126,34 @@ class VariantSource:
             return [row[0] for row in cur.execute('select distinct base__sample_id from sample;').fetchall()]
 
     def get_variants(self) -> list:
-        """Fetch annotated variants; bridge legacy schema to the new column names."""
+        """Fetch the variants marked in the Note column; bridge legacy schema to the new column names.
+        The mark is always returned as variant['base__note'] (text), whichever column holds it."""
         with sqlite3.connect(self.sqlite_path) as con:
             cur = con.cursor()
             variant_cols = [col[1] for col in cur.execute('pragma table_info(variant);').fetchall()]
-            if 'vep_csq__symbol' not in variant_cols:
-                # legacy SQLite
-                rows = cur.execute('select * from variant where base__note in (1,2,3,4,5,6,7,8);').fetchall()
-                variants = [dict(zip(variant_cols, row)) for row in rows]
-                for variant in variants:
-                    variant.update(self._annotate_legacy(variant))
-            else:
-                # new SQLite
-                rows = cur.execute('select * from variant where base__note is not null;').fetchall()
-                variants = [dict(zip(variant_cols, row)) for row in rows]
+            note = self._note_expression(variant_cols)
+            if note is None:
+                return []
+            legacy = 'vep_csq__symbol' not in variant_cols
+            where = f"{note} in ('1','2','3','4','5','6','7','8')" if legacy else f'{note} is not null'
+            rows = cur.execute(f'select *, {note} from variant where {where};').fetchall()
+        variants = []
+        for *values, mark in rows:
+            variant = dict(zip(variant_cols, values))
+            variant['base__note'] = mark
+            if legacy:
+                variant.update(self._annotate_legacy(variant))
+            variants.append(variant)
         return variants
+
+    @staticmethod
+    def _note_expression(variant_cols: list) -> str | None:
+        """SQL for the clinician's mark. wgnote 3.0.0 writes base__note_variant, a column results of OpenCRAVAT
+        >= 2.3.1 have instead of base__note; older results only have base__note. Blank counts as no mark."""
+        columns = [f"nullif(trim({c}), '')" for c in ('base__note_variant', 'base__note') if c in variant_cols]
+        if not columns:
+            return None
+        return columns[0] if len(columns) == 1 else f'coalesce({", ".join(columns)})'
 
     def _annotate_legacy(self, variant_data: dict) -> dict:
         extra_vcf_info = self._extra_vcf_info(variant_data)

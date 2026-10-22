@@ -1,5 +1,5 @@
 title: ClinReport
-version: 3.0.0
+version: 3.0.2
 type: webviewerwidget
 # 'base' is present in every result, so the widget is always offered on the Summary tab.
 required_annotator: base
@@ -13,5 +13,6 @@ developer:
 release_note:
   1.0.0: Summary-tab entry point of the ClinReport webapp.
   3.0.0: Part of ClinReport 3.0.0; the module version now follows the product version.
+  3.0.2: Part of ClinReport 3.0.2 (unchanged).
 tags:
 - reporters

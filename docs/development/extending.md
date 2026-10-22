@@ -24,7 +24,7 @@ Edit templates in Word; keep each Jinja tag inside one run (type it in one go) o
 ## Add a template (e.g. a new clinic "XYZ")
 
 **Usually no code change:** an OpenCRAVAT admin opens the review page → «Шаблоны» → adds the `.docx` (desktop app: its
-Шаблоны tab). Start from «Скачать образец», use «Список полей», and fix what the check reports
+Шаблоны tab). Start from a copy of DZM («Скачать образец» in the browser, «Открыть папку» in the app), use «Список полей», and fix what the check reports
 ([04 · Templates](../reference/http-api.md#templates)).
 
 To ship a template **built in** (every installation, server and desktop):
