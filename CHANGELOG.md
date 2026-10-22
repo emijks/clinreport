@@ -3,13 +3,15 @@
 All notable changes to ClinReport. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/). The section of a version is used as its GitHub release notes.
 
-## [3.0.1] - unreleased
+## [3.0.2] - 2026-10-22
+
+3.0.1 was never released; its changes ship here.
 
 ### Added
 
 - **«Окружения»: work with an OpenCRAVAT that is already on the computer** (pip, conda, pyenv, pipx, the official
-  installer). «Найти окружения» lists them without changing anything (a deep search walks all disks, with progress and
-  «Остановить»); each one says whether ClinReport can use it and why (OpenCRAVAT and Python versions, setuptools, write
+  installer). «Найти окружения» lists them without changing anything (only the usual places are looked at, never
+  the whole disk; anything elsewhere is added with «Указать Python…»); each one says whether ClinReport can use it and why (OpenCRAVAT and Python versions, setuptools, write
   access, `wgnote`). «Установить» puts the ClinReport modules into its modules folder — missing Python packages go into
   the module's own folder, the environment itself is not changed, the previous modules are kept as a backup and restored
   if anything fails. «Использовать» runs that OpenCRAVAT instead of the built-in one; templates and settings stay shared.
@@ -17,12 +19,20 @@ All notable changes to ClinReport. Format: [Keep a Changelog](https://keepachang
 
 ### Changed
 
+- **Desktop window, less clutter**: «Найти окружения», «Список полей» and «Добавить шаблон…» open in a modal window
+  (closing the search window stops the search); «Недавние результаты» also lists the latest OpenCRAVAT jobs, so results
+  opened in the browser show up; each template has «Открыть папку» (shows the file) instead of «Сохранить…», and
+  «Сохранить образец…» and «Заменить…» are gone (delete and add again); «Коды в колонке Note» is a card; the data folder
+  is a «Папка данных» button; shorter hints. Each environment in «Окружения» has two buttons: «Использовать» (asks
+  before switching) and «Настройки», a modal window with tabs (Сведения, Модули ClinReport, Пути, Пакеты Python, Модули
+  OpenCRAVAT, Запуск) in place of the panel under the list.
 - **OpenCRAVAT no longer starts when the window opens**: «Запустить» starts it, and so does opening a result
   («Открыть результат…», «Просмотр», «Заключение» — the result opens once OpenCRAVAT is ready). A double-clicked `.sqlite`
   and the sign-in autostart still start it; «Запускать OpenCRAVAT при открытии ClinReport» in Настройки brings the old
   behaviour back.
 - **Closing the window stops OpenCRAVAT first**: the window shows «Завершение работы» and closes once OpenCRAVAT has
-  stopped (after a running module install, if any), so nothing is left running when the window is gone.
+  stopped (after a running module install, if any), so nothing is left running when the window is gone. The message
+  stays at least 3 seconds with a spinner, so on a fast computer the window does not just vanish.
 
 ### Fixed
 

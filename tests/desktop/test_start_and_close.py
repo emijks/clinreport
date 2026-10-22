@@ -5,6 +5,7 @@ import json
 import threading
 
 import pytest
+from clinreport_desktop import __main__ as main
 from clinreport_desktop import config
 from clinreport_desktop.__main__ import App
 from helpers import ROOT
@@ -48,6 +49,7 @@ class FakeServer:
 def app(tmp_path, monkeypatch):
     monkeypatch.setenv('CLINREPORT_DATA_DIR', str(tmp_path / 'data'))
     monkeypatch.setenv('CLINREPORT_BUNDLE_DIR', str(ROOT))
+    monkeypatch.setattr(main, 'SHUTDOWN_MIN_SECONDS', 0)
 
     def make(state='stopped', **args):
         defaults = {'result': None, 'minimized': False, 'selftest': None, 'headless': False}
@@ -100,6 +102,32 @@ def test_closing_stops_opencravat_first_and_then_closes_the_window(app):
     assert said(a.window, 'Останавливаю OpenCRAVAT')
     assert said(a.window, 'Готово')
     assert a.on_closing() is True  # the close pywebview retries now goes through
+
+
+def test_closing_shows_the_shutdown_long_enough_even_when_opencravat_stops_at_once(app, monkeypatch):
+    monkeypatch.setattr(main, 'SHUTDOWN_MIN_SECONDS', 1.5)
+    a = app('running')
+    assert a.on_closing() is False
+    assert not a.window.destroyed.wait(1), 'a fast stop must not flash the window away'
+    assert not said(a.window, 'Готово')
+    assert a.window.destroyed.wait(10)
+    assert a.server.stopped and said(a.window, 'Готово')
+
+
+def test_switching_environment_starts_nothing_while_opencravat_is_stopped(app):
+    from clinreport_desktop.api import Api
+
+    a = app('stopped')
+    assert Api(a).env_use('builtin') == {'ok': True, 'restarted': False}
+    assert not a.server.started and config.load()['environment'] == 'builtin'
+
+
+def test_switching_environment_restarts_a_running_opencravat(app):
+    from clinreport_desktop.api import Api
+
+    a = app('running')
+    assert Api(a).env_use('builtin') == {'ok': True, 'restarted': True}
+    assert a.server.stopped and a.server.started
 
 
 def test_closing_waits_for_a_module_install(app, monkeypatch):

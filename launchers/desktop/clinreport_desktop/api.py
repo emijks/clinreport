@@ -50,6 +50,18 @@ def open_folder(path: Path):
         subprocess.Popen(['xdg-open', str(path)])
 
 
+def reveal(path: Path):
+    """Show a file selected in Explorer / Finder; a folder is simply opened."""
+    if path.is_dir():
+        open_folder(path)
+    elif sys.platform == 'win32':
+        subprocess.Popen(f'explorer /select,"{path}"')
+    elif sys.platform == 'darwin':
+        subprocess.Popen(['open', '-R', str(path)])
+    else:
+        subprocess.Popen(['xdg-open', str(path.parent)])
+
+
 class Api:
     def __init__(self, app):
         self._app = app
@@ -150,7 +162,7 @@ class Api:
     @_safe
     def recent(self):
         items = []
-        for entry in config.load()['recent']:
+        for entry in config.recent_results(self._jobs_dir()):
             path = entry['path']
             item = {
                 'path': path,
@@ -163,6 +175,14 @@ class Api:
                 item.update(_result_summary(path))
             items.append(item)
         return {'items': items}
+
+    def _jobs_dir(self) -> str:
+        """Jobs folder of the OpenCRAVAT that runs (or would run): its finished jobs count as recent results."""
+        env = self._app.server.environment
+        if env is None:
+            chosen = config.load()['environment']
+            env = self._app.envs.get(chosen) if chosen != environments.BUILTIN_ID else None
+        return (env or {}).get('jobs_dir') or str(paths.data_dir() / 'jobs')
 
     @_safe
     def forget_result(self, path):
@@ -211,21 +231,11 @@ class Api:
         return service.check_template({'id': template_id})
 
     @_safe
-    def template_save(self, template_id):
-        import webview
+    def template_reveal(self, template_id):
         from clinreport_core import service
 
-        document = service.template_file({'id': template_id})
-        chosen = self._app.window.create_file_dialog(
-            webview.FileDialog.SAVE, save_filename=document.filename, file_types=('Документ Word (*.docx)',)
-        )
-        if not chosen:
-            return {'cancelled': True}
-        target = chosen if isinstance(chosen, str) else chosen[0]
-        if not target.lower().endswith('.docx'):
-            target += '.docx'
-        Path(target).write_bytes(document.data)
-        return {'path': target}
+        reveal(service.template_path(template_id))
+        return {'ok': True}
 
     @_safe
     def template_fields(self):
@@ -351,11 +361,11 @@ class Api:
         return env
 
     @_safe
-    def env_search(self, deep=False):
+    def env_search(self):
         manual = config.load()['environments_manual']
-        if not self._app.search.start(bool(deep), self._app.on_env_found, extra=manual):
+        if not self._app.search.start(self._app.on_env_found, extra=manual):
             raise ValueError('Поиск уже идёт.')
-        log.info('environment search started (%s)', 'deep' if deep else 'standard')
+        log.info('environment search started')
         return {'ok': True}
 
     @_safe
@@ -370,11 +380,15 @@ class Api:
 
         chosen = self._app.window.create_file_dialog(
             webview.FileDialog.OPEN,
-            file_types=('Python (python.exe)', 'Все файлы (*.*)') if sys.platform == 'win32' else ('Все файлы (*)',),
+            file_types=('Python (*.exe)', 'Все файлы (*.*)') if sys.platform == 'win32' else ('Все файлы (*)',),
         )
         if not chosen:
             return {'cancelled': True}
         python = chosen[0]
+        copy = environments.clinreport_copy(python)
+        if copy:
+            raise ValueError(f'Это Python программы ClinReport ({copy}), а не отдельный OpenCRAVAT. '
+                             'Выберите python.exe окружения, где OpenCRAVAT установлен через pip, conda или его установщик.')
         info = environments.probe(python)
         if not info.get('cravat'):
             raise ValueError(
@@ -405,7 +419,8 @@ class Api:
 
     @_safe
     def env_use(self, env_id):
-        """Run OpenCRAVAT from this environment from now on (restarts it)."""
+        """Run OpenCRAVAT from this environment from now on. A running OpenCRAVAT restarts in it; a stopped one stays
+        stopped (it starts when the user asks, as everywhere else). Returns {'restarted': bool}."""
         app = self._app
         if app.installer.busy():
             raise ValueError('Дождитесь окончания установки модулей.')
@@ -417,11 +432,13 @@ class Api:
                 raise ValueError('ClinReport не может запустить это окружение: ' + env['verdict']['summary'])
         config.update({'environment': env_id})
         log.info('environment chosen: %s', env_id)
+        if app.server.state not in ('starting', 'running'):
+            return {'ok': True, 'restarted': False}
         app.server.stop()
         app.start_server()
         if env_id != environments.BUILTIN_ID and app.env_notice:
             raise ValueError(app.env_notice)
-        return {'ok': True}
+        return {'ok': True, 'restarted': True}
 
     @_safe
     def env_install(self, env_id, source='bundle'):
@@ -485,7 +502,7 @@ class Api:
         target = Path(path)
         if not target.exists():
             raise ValueError(f'Не найдено: {path}')
-        open_folder(target if target.is_dir() else target.parent)
+        reveal(target)
         return {'ok': True}
 
     # --- log ---

@@ -80,7 +80,7 @@ v3.0.0) adds a text box + **Save** to the variant/gene detail panel and calls `G
 (`wgnote.py:get_data`) which runs `update variant set <col>=? where base__uid=?`, where `<col>` is
 **`base__note_variant` if that column exists (results made/updated by OC ≥ 2.3.1), else `base__note`**.
 ClinReport reads `base__note_variant` when the result has it and `base__note` otherwise
-(`VariantSource._note_expression`; [issue 019](../issues/clinreport/019-note-column-base-note-variant.md), fixed in 3.0.1).
+(`VariantSource._note_expression`; [issue 019](../issues/clinreport/019-note-column-base-note-variant.md), fixed in 3.0.2).
 Results of OC ≥ 2.3.1 have only `base__note_variant` (`constants.crv_def`); the bundled OC 3.2.3 is one of them.
 Without `wgnote` installed, clinicians cannot mark variants at all.
 

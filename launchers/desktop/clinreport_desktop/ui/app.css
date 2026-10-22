@@ -61,7 +61,10 @@ nav.side {
 .tab[aria-selected="true"] svg { color: var(--accent); }
 .tab .count { margin-left: auto; font-size: 11.5px; color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
 .tab .count.warn { color: var(--warn); font-weight: 600; }
-.side .foot { margin-top: auto; padding: 10px; font-size: 11.5px; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+.side .foot { margin-top: auto; display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border: 0;
+  border-radius: var(--radius); background: none; color: var(--muted); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer; }
+.side .foot svg { width: 15px; height: 15px; flex: none; }
+.side .foot:hover { background: var(--bg); color: var(--accent); }
 
 main { padding: 18px 22px 24px; min-width: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
 section[role="tabpanel"] { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
@@ -163,7 +166,6 @@ dl.kv dd { margin: 0; display: flex; gap: 6px 8px; align-items: center; flex-wra
 .check code { font-family: var(--mono); background: var(--surface); color: var(--text); padding: 0 4px; border-radius: 3px; }
 .confirm { display: inline-flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--err); }
 .confirm.neutral { color: var(--text); }
-.add-form .row { margin-top: 12px; }
 .fields-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .fields-cols ul { margin: 0; padding-left: 18px; columns: 2; font-family: var(--mono); font-size: 12px; }
 
@@ -209,29 +211,24 @@ pre.log {
 }
 
 /* environments */
-.env-search { display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
-.env-search .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.env-search .current { color: var(--muted); font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.env-search { display: flex; flex-direction: column; gap: 12px; font-size: 13.5px; }
 .bar { height: 6px; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); overflow: hidden; }
 .bar i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
 .bar.busy i { width: 30%; animation: slide 1.4s ease-in-out infinite; }
 @keyframes slide { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
 .env-list { display: flex; flex-direction: column; }
-.env-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 2px 12px; align-items: center; width: 100%;
-  padding: 10px 12px; border: 1px solid transparent; border-radius: var(--radius); background: none; color: inherit; font: inherit;
-  text-align: left; cursor: pointer; }
+.env-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 2px 12px; align-items: center;
+  padding: 10px 12px; border: 1px solid transparent; border-radius: var(--radius); }
 .env-row + .env-row { margin-top: 4px; }
-.env-row:hover { background: var(--bg); }
-.env-row[aria-selected="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.env-row.chosen { border-color: var(--ok); background: var(--ok-soft); }
 .env-row .radio { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border); grid-row: 1 / span 2; }
 .env-row.chosen .radio { border-color: var(--ok); background: radial-gradient(var(--ok) 0 3px, transparent 4px); }
 .env-row .name { font-weight: 600; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; overflow-wrap: anywhere; }
 .env-row .sub { grid-column: 2; color: var(--muted); font-size: 12.5px; display: flex; gap: 4px 12px; flex-wrap: wrap; min-width: 0; }
-.env-row .state { grid-row: 1 / span 2; grid-column: 3; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.env-row .acts { grid-row: 1 / span 2; grid-column: 3; display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.env-tab { min-height: 220px; }
+.modal-body > #env-modal > .seg { margin-top: 0; }
 .kind { font-size: 11px; font-weight: 600; padding: 0 7px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); background: var(--surface); }
-.env-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 20px; align-items: start; }
-.env-head .title { font-size: 17px; font-weight: 600; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; overflow-wrap: anywhere; }
-.env-head .actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .facts { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 6px; font-size: 13px; color: var(--muted); }
 .facts b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 .verdict { grid-column: 1 / -1; border-radius: var(--radius); padding: 10px 12px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; }
@@ -251,13 +248,10 @@ pre.log {
 .mods { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
 .mods th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 0 10px 6px 0; }
 .mods td { padding: 7px 10px 7px 0; border-top: 1px solid var(--border); vertical-align: middle; }
-.env-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
 .job { margin-top: 10px; font-size: 12.5px; display: flex; flex-direction: column; gap: 4px; }
 .job ol { margin: 0; padding-left: 20px; color: var(--muted); }
 .job ol li:last-child { color: var(--text); }
 .job .err { color: var(--err); white-space: pre-wrap; font-family: var(--mono); font-size: 12px; }
-details.pro > summary { cursor: pointer; font-weight: 600; }
-details.pro > summary small { font-weight: 400; color: var(--muted); margin-left: 6px; }
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin: 12px 0 10px; flex-wrap: wrap; }
 .seg button { border: 0; background: var(--surface); color: var(--text); font: inherit; font-size: 13px; padding: 5px 12px; cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--border); }
@@ -276,6 +270,19 @@ dl.paths .acts { padding-left: 10px; }
 .mtype { border: 1px solid var(--border); border-radius: var(--radius); padding: 7px 10px; font-size: 12.5px; color: var(--muted); }
 .mtype b { display: block; font-size: 17px; color: var(--text); font-variant-numeric: tabular-nums; }
 
+/* modal window (environment search, template fields, a new template) */
+.modal { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(15, 23, 32, .38); }
+.modal-box { width: min(480px, 100%); max-height: calc(100% - 32px); display: flex; flex-direction: column; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 40px rgba(0, 0, 0, .22); }
+.modal-box.wide { width: min(820px, 100%); }
+.modal-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px 0; }
+.modal-head h2 { flex: 1; }
+.modal-x { border: 0; background: none; color: var(--muted); font-size: 22px; line-height: 1; padding: 2px 6px; border-radius: var(--radius); cursor: pointer; }
+.modal-x:hover { background: var(--bg); color: var(--text); }
+.modal-x:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.modal-body { padding: 14px 18px 18px; overflow: auto; }
+
 /* closing: the window stays until OpenCRAVAT has stopped */
 .shutdown { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center;
   background: color-mix(in srgb, var(--bg) 80%, transparent); backdrop-filter: blur(2px); }
@@ -283,6 +290,14 @@ dl.paths .acts { padding-left: 10px; }
   padding: 18px 20px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 10px 40px rgba(0, 0, 0, .18); font-size: 13.5px; }
 .shutdown-box b { font-size: 15px; }
 .shutdown-box small { color: var(--muted); }
+.shutdown-step { display: flex; align-items: center; gap: 10px; }
+.spinner { width: 20px; height: 20px; flex: none; border-radius: 50%; border: 2.5px solid var(--border);
+  border-top-color: var(--accent); animation: spin .8s linear infinite; }
+.spinner.done { animation: none; border-color: var(--ok); background: var(--ok); position: relative; }
+.spinner.done::after { content: ''; position: absolute; left: 4.5px; top: 1.5px; width: 5px; height: 9px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2.4s; } }
 
 /* Safari < 14.1 (macOS 10.15 without updates) ignores gap in flex containers; index.html then sets .no-flex-gap and
    these margins stand in for the gaps above. Grid gaps work there and need nothing. */
@@ -315,20 +330,20 @@ dl.paths .acts { padding-left: 10px; }
 .no-flex-gap .radio-row > :not([hidden]) ~ * { margin-left: 14px; }
 .no-flex-gap .radio-row label input[type="radio"] { margin-right: 6px; }
 .no-flex-gap .radio-row label .port-input { margin-left: 6px; }
-.no-flex-gap .env-search > :not([hidden]) ~ * { margin-top: 8px; }
-.no-flex-gap .env-search .head > :not([hidden]) ~ * { margin-left: 10px; }
+.no-flex-gap .env-search > :not([hidden]) ~ * { margin-top: 12px; }
+.no-flex-gap .modal-head > * ~ * { margin-left: 10px; }
+.no-flex-gap .side .foot svg { margin-right: 8px; }
 .no-flex-gap .env-list > :not([hidden]) ~ * { margin-top: 4px; }
 .no-flex-gap .env-row .name > :not([hidden]) ~ * { margin-left: 8px; }
 .no-flex-gap .env-row .sub > * { margin-right: 12px; }
-.no-flex-gap .env-row .state > :not([hidden]) ~ * { margin-left: 6px; }
-.no-flex-gap .env-head .title > :not([hidden]) ~ * { margin-left: 10px; }
-.no-flex-gap .env-head .actions > :not([hidden]) ~ * { margin-left: 8px; }
+.no-flex-gap .env-row .acts > :not([hidden]) ~ * { margin-left: 6px; }
 .no-flex-gap .facts > * { margin-right: 18px; }
 .no-flex-gap .verdict > :not([hidden]) ~ * { margin-top: 6px; }
 .no-flex-gap .verdict ul > :not([hidden]) ~ * { margin-top: 3px; }
 .no-flex-gap .confirm-box > :not([hidden]) ~ * { margin-left: 10px; }
 .no-flex-gap .job > :not([hidden]) ~ * { margin-top: 4px; }
 .no-flex-gap .shutdown-box > :not([hidden]) ~ * { margin-top: 10px; }
+.no-flex-gap .shutdown-step > * ~ * { margin-left: 10px; }
 @supports not (background: color-mix(in srgb, red 50%, transparent)) {
   .shutdown { background: var(--bg); }
 }

@@ -149,32 +149,6 @@ def test_conda_environments_txt_is_read(tmp_path):
     assert Path('/opt/envs/cravat') in prefixes and tmp_path / 'miniconda3' in prefixes
 
 
-def _fake_install(base: Path) -> Path:
-    if WINDOWS:
-        site, python = base / 'Lib' / 'site-packages', base / 'python.exe'
-    else:
-        site, python = base / 'lib' / 'python3.11' / 'site-packages', base / 'bin' / 'python3.11'
-    (site / 'cravat').mkdir(parents=True)
-    (site / 'cravat' / 'admin_util.py').write_text('', encoding='utf-8')
-    python.parent.mkdir(parents=True, exist_ok=True)
-    python.write_text('', encoding='utf-8')
-    return python
-
-
-def test_deep_search_finds_site_packages_cravat_and_skips_noise(tmp_path):
-    wanted = _fake_install(tmp_path / 'work' / 'envs' / 'oc')
-    _fake_install(tmp_path / 'project' / 'node_modules' / 'x')  # never walked into
-    found = [p for p, _ in envs.deep_candidates([tmp_path], threading.Event())]
-    assert found == [wanted]
-
-
-def test_deep_search_stops_when_cancelled(tmp_path):
-    _fake_install(tmp_path / 'a' / 'b')
-    cancel = threading.Event()
-    cancel.set()
-    assert list(envs.deep_candidates([tmp_path], cancel)) == []
-
-
 # --- installing our modules ---
 
 
@@ -347,3 +321,37 @@ def test_route_appends_module_lib_after_the_environment(tmp_path, monkeypatch):
     spec = importlib.util.spec_from_file_location('route', webapp / 'route.py')
     spec.loader.exec_module(importlib.util.module_from_spec(spec))
     assert sys.path[-1] == str(webapp / 'lib') and sys.path[0] == str(webapp)
+
+
+def test_every_file_dialog_filter_is_one_pywebview_accepts():
+    """«Указать Python…» failed with "Python (python.exe) is not a valid file filter": the pattern must start with *."""
+    import ast
+
+    util = pytest.importorskip('webview.util')
+    source = (ROOT / 'launchers' / 'desktop' / 'clinreport_desktop' / 'api.py').read_text(encoding='utf-8')
+    filters = [
+        item.value
+        for call in ast.walk(ast.parse(source))
+        if isinstance(call, ast.keyword) and call.arg == 'file_types'
+        for node in ast.walk(call.value)
+        if isinstance(node, ast.Tuple)  # the filter tuples, not e.g. sys.platform == 'win32'
+        for item in node.elts
+        if isinstance(item, ast.Constant) and isinstance(item.value, str)
+    ]
+    assert len(filters) >= 6
+    for file_filter in filters:
+        util.parse_file_type(file_filter)  # raises ValueError for a filter the dialog rejects
+
+
+def test_other_copies_of_clinreport_are_not_environments(tmp_path, fake_oc_venv):
+    copy = tmp_path / 'old-build' / 'ClinReport'
+    (copy / 'python').mkdir(parents=True)
+    (copy / 'bundle.json').write_text('{"version": "2.9", "managed": []}', encoding='utf-8')
+    assert envs.clinreport_copy(copy / 'python' / 'python.exe') == copy
+    assert envs.clinreport_copy(fake_oc_venv[0]) is None
+
+
+def test_no_untested_note_where_clinreport_cannot_run_it():
+    verdict = envs.assess(_env(oc='3.2.3', st='82.0'), platform='win32', latest='3.0.1')
+    assert not verdict['can_run']
+    assert not any('не проверялся' in r['text'] for r in verdict['reasons'])

@@ -2,7 +2,7 @@
 
 | Status | Priority | Type | Area |
 |---|---|---|---|
-| done (3.0.1) | **P1** | bug / compatibility | `clinreport_core/database.py` (`VariantSource.get_variants`) |
+| done (3.0.2) | **P1** | bug / compatibility | `clinreport_core/database.py` (`VariantSource.get_variants`) |
 
 ## Problem
 

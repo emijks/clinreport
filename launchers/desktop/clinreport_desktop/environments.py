@@ -134,6 +134,21 @@ def clean_env(prefix=None) -> dict:
     return env
 
 
+def clinreport_copy(python):
+    """The folder of a ClinReport bundle (any copy: installed, old, test build) this Python belongs to, or None.
+    Its OpenCRAVAT is that copy's built-in one, not an installation of the user's."""
+    folder = Path(python).parent
+    for candidate in (folder, *list(folder.parents)[:3]):
+        marker = candidate / 'bundle.json'
+        if marker.is_file():
+            try:
+                if 'managed' in json.loads(marker.read_text(encoding='utf-8')):
+                    return candidate
+            except (OSError, ValueError):
+                pass
+    return None
+
+
 def _is_ours(python: Path) -> bool:
     try:
         bundle = paths.bundle_dir()
@@ -418,7 +433,7 @@ def assess(env: dict, platform: str = sys.platform, latest: str = None) -> dict:
         can_run = False
     if (2, 17) <= oc < (3,) and py >= (3, 14):
         say('warn', 'На Python 3.14 просмотрщик OpenCRAVAT 2.17 может зависать при открытии результата.')
-    if oc and can_install and not (oc == (2, 2, 9) or (oc >= (3,) and platform != 'win32' and oc <= (3, 2, 4))):
+    if oc and can_run and not (oc == (2, 2, 9) or (oc >= (3,) and platform != 'win32' and oc <= (3, 2, 4))):
         say(
             'info',
             f'ClinReport с OpenCRAVAT {env["opencravat"]} не проверялся: устроен он так же, но возможны отличия.',
@@ -669,77 +684,6 @@ def running_guis() -> dict:
     return found
 
 
-SKIP_DIRS = {'node_modules', '.git', '.hg', '.svn', '__pycache__', '$recycle.bin', 'system volume information',
-             'windows', 'temp', 'tmp', 'caches', '.trash', 'proc', 'sys', 'dev', 'packages', 'microsoft',
-             'appdata/local/microsoft', 'library/caches', '.cache', '.npm', '.cargo', '.rustup', 'onedrive'}  # fmt: skip
-
-
-def deep_candidates(roots, cancel: threading.Event, progress=None, max_depth=9):
-    """Walk folders looking for site-packages/cravat; yields (python, where). progress(visited, current)."""
-    visited = 0
-    stack = [(Path(r), 0) for r in roots]
-    while stack:
-        if cancel.is_set():
-            return
-        folder, depth = stack.pop()
-        visited += 1
-        if progress and visited % 50 == 0:
-            progress(visited, str(folder))
-        try:
-            entries = list(os.scandir(folder))
-        except OSError:
-            continue
-        for entry in entries:
-            try:
-                if not entry.is_dir(follow_symlinks=False):
-                    continue
-            except OSError:
-                continue
-            name = entry.name.lower()
-            if name in ('site-packages', 'dist-packages'):
-                cravat = Path(entry.path) / 'cravat'
-                if (cravat / 'admin_util.py').is_file():
-                    python = _python_for_site_packages(Path(entry.path))
-                    if python:
-                        yield python, 'глубокий поиск'
-                continue  # never descend into installed packages
-            if (
-                name in SKIP_DIRS
-                or depth >= max_depth
-                or (name.startswith('.') and name not in ('.conda', '.pyenv', '.local', '.venv', '.virtualenvs'))
-            ):
-                continue
-            if _is_ours(Path(entry.path)):
-                continue
-            stack.append((Path(entry.path), depth + 1))
-    if progress:
-        progress(visited, '')
-
-
-def _python_for_site_packages(site: Path):
-    """<prefix>/Lib/site-packages (Windows) or <prefix>/lib/pythonX.Y/site-packages → the prefix's python."""
-    if IS_WINDOWS:
-        prefix = site.parent.parent
-        options = [prefix / 'python.exe', prefix / 'Scripts' / 'python.exe']
-    else:
-        prefix = site.parent.parent.parent
-        options = [prefix / 'bin' / site.parent.name, prefix / 'bin' / 'python3', prefix / 'bin' / 'python']
-    return next((p for p in options if p.is_file()), None)
-
-
-def deep_roots() -> list:
-    roots = [Path.home()]
-    if IS_WINDOWS:
-        import string
-
-        drives = [Path(f'{d}:\\') for d in string.ascii_uppercase if Path(f'{d}:\\').exists()]
-        home_drive = Path(Path.home().anchor)
-        roots += [d for d in drives if d != home_drive] + [home_drive]
-    else:
-        roots += [Path('/opt'), Path('/usr/local')]
-    return roots
-
-
 def data_only_candidates() -> list:
     """OpenCRAVAT data folders at the default places (left by an install whose Python is not found)."""
     root = oc_root(Path('.'))
@@ -793,28 +737,28 @@ def save_cache(items: list):
 
 
 class Search:
-    """One search at a time: standard places, then (deep=True) a walk of the disks. Results arrive as found."""
+    """One search at a time over the standard places (never a walk of the disks). Results arrive as found."""
 
     def __init__(self):
         self._lock = threading.Lock()
         self._cancel = threading.Event()
         self._thread = None
-        self.state = {'running': False, 'phase': '', 'checked': 0, 'total': 0, 'visited': 0, 'current': '',
-                      'found': 0, 'deep': False, 'finished_at': None, 'cancelled': False, 'errors': []}  # fmt: skip
+        self.state = {'running': False, 'phase': '', 'checked': 0, 'total': 0, 'found': 0, 'finished_at': None,
+                      'cancelled': False, 'errors': []}  # fmt: skip
 
     def snapshot(self) -> dict:
         with self._lock:
             return json.loads(json.dumps(self.state))
 
-    def start(self, deep: bool, on_found, extra=()):
+    def start(self, on_found, extra=()):
         with self._lock:
             if self.state['running']:
                 return False
             self._cancel.clear()
-            self.state.update(running=True, phase='Ищу Python в стандартных местах…', checked=0, total=0, visited=0,
-                              current='', found=0, deep=deep, cancelled=False, errors=[])  # fmt: skip
+            self.state.update(running=True, phase='Ищу Python в стандартных местах…', checked=0, total=0, found=0,
+                              cancelled=False, errors=[])  # fmt: skip
         self._thread = threading.Thread(
-            target=self._run, args=(deep, on_found, list(extra)), daemon=True, name='env-search'
+            target=self._run, args=(on_found, list(extra)), daemon=True, name='env-search'
         )
         self._thread.start()
         return True
@@ -826,7 +770,7 @@ class Search:
         with self._lock:
             self.state.update(changes)
 
-    def _run(self, deep, on_found, extra):
+    def _run(self, on_found, extra):
         seen_python, seen_package, seen_conf = set(), set(), []
         pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix='env-probe')
 
@@ -845,6 +789,8 @@ class Search:
                 if self._cancel.is_set():
                     break
                 if not python.is_file() or _is_ours(python) or 'windowsapps' in str(python).lower():
+                    continue
+                if clinreport_copy(python):
                     continue
                 key = os.path.normcase(os.path.realpath(python))
                 if key in seen_python:
@@ -872,17 +818,6 @@ class Search:
 
         try:
             submit_all([(Path(p), 'указан вручную') for p in extra] + standard_candidates())
-            if deep and not self._cancel.is_set():
-                self._set(phase='Глубокий поиск: просматриваю папки…')
-
-                def progress(visited, current):
-                    self._set(visited=visited, current=current)
-
-                batch = []
-                for python, where in deep_candidates(deep_roots(), self._cancel, progress):
-                    batch.append((python, where))
-                    submit_all(batch)
-                    batch = []
             for env in data_only_candidates():
                 if not any(same_path(env['conf_path'], c) for c in seen_conf):
                     on_found(env)
@@ -891,7 +826,7 @@ class Search:
             self._set(errors=self.state['errors'] + [f'Поиск прервался: {e!r}'])
         finally:
             pool.shutdown(wait=True)
-            self._set(running=False, phase='', current='', finished_at=time.time(), cancelled=self._cancel.is_set())
+            self._set(running=False, phase='', finished_at=time.time(), cancelled=self._cancel.is_set())
 
 
 # --- installing our modules into an environment ---

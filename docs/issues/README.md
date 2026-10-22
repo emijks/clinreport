@@ -39,7 +39,7 @@ the place the team works in. Until then the files are the source of truth. When 
 |---|---|---|---|
 | [001](clinreport/001-postgres-untested.md) | Postgres upload / «Похожие» never tested against a real server | **P1** | blocked |
 | [003](clinreport/003-python-version-constraints.md) | OpenCRAVAT 2.x needs Python < 3.12 and setuptools < 81 | **P1** | open |
-| [019](clinreport/019-note-column-base-note-variant.md) | Notes in `base__note_variant` (OC ≥ 2.3.1) are not read | **P1** | done (3.0.1) |
+| [019](clinreport/019-note-column-base-note-variant.md) | Notes in `base__note_variant` (OC ≥ 2.3.1) are not read | **P1** | done (3.0.2) |
 | [021](clinreport/021-invalid-notes-silently-ignored.md) | Invalid Note values are silently ignored | **P1** | open |
 | [005](clinreport/005-review-edits-not-persisted.md) | Review edits are lost when the page is closed | P2 | open |
 | [006](clinreport/006-reprocess-discards-edits.md) | «Обработать» again silently discards edits | P2 | open |
@@ -66,7 +66,7 @@ the place the team works in. Until then the files are the source of truth. When 
 | [007](desktop/007-empty-window-macos.md) | The control window is empty on an old Mac | P1 | fixed — to confirm on the Mac |
 | [002](desktop/002-code-signing.md) | Desktop app is not code-signed | P2 | open (unsigned for 3.0) |
 | [003](desktop/003-lab-modules-tab.md) | The lab's own OpenCRAVAT modules cannot be added in the app | P3 | open — deferred |
-| [004](desktop/004-install-into-existing-opencravat.md) | Installing into an existing OpenCRAVAT is manual | P3 | done (3.0.1) |
+| [004](desktop/004-install-into-existing-opencravat.md) | Installing into an existing OpenCRAVAT is manual | P3 | done (3.0.2) |
 | [006](desktop/006-upstream-windows-fixes.md) | OpenCRAVAT 3.x needs our start-up patches on Windows | P3 | open |
 | [001](desktop/001-build-and-release.md) | Desktop builds are manual; macOS not built | P2 | done (3.0.0) |
 | [005](desktop/005-update-check.md) | The app does not tell users about new versions | P3 | done (3.0.0) |

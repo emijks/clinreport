@@ -18,6 +18,9 @@ ui_log = logging.getLogger('clinreport.ui')
 UI_DIR = Path(__file__).resolve().parent / 'ui'
 UI_TIMEOUT = 20  # seconds for the window's page to start before the log says so
 UI_LOG_MAX = 200  # messages the page may log per session (a failing timer must not fill the disk)
+# «Завершение работы» stays at least this long: on a fast computer OpenCRAVAT stops in a blink and the window seemed to
+# vanish without stopping anything. Long enough to read and trust, short enough not to feel like a hang.
+SHUTDOWN_MIN_SECONDS = 3
 
 
 class App:
@@ -37,7 +40,11 @@ class App:
         self.search = environments.Search()
         self.installer = environments.Installer()
         self._envs_lock = threading.Lock()
-        self.envs = {e['id']: e for e in environments.load_cache() if e.get('id') != environments.BUILTIN_ID}
+        self.envs = {
+            e['id']: e
+            for e in environments.load_cache()
+            if e.get('id') != environments.BUILTIN_ID and not (e.get('python') and environments.clinreport_copy(e['python']))
+        }
         self.env_notice = None  # why the chosen environment was not used at start-up
         self.pending = None  # (path, 'viewer' | 'report') to open once OpenCRAVAT is ready
         self._closing = False  # the window's close was cancelled to stop OpenCRAVAT first
@@ -257,6 +264,7 @@ class App:
                 pass
 
         log.info('closing: stopping OpenCRAVAT first')
+        started = time.monotonic()
         try:
             self.search.cancel()
             if self.installer.busy():
@@ -266,8 +274,9 @@ class App:
             if self.server.state in ('starting', 'running', 'stopping'):
                 show('Останавливаю OpenCRAVAT…')
                 self.server.stop()
+            time.sleep(max(0, started + SHUTDOWN_MIN_SECONDS - time.monotonic()))
             show('Готово', done=True)
-            time.sleep(0.4)  # let «Готово» be seen
+            time.sleep(0.6)  # let «Готово» be seen
         except Exception:  # noqa: BLE001 - whatever happens, the window must close
             log.exception('stopping OpenCRAVAT on close failed')
         finally:

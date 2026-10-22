@@ -95,7 +95,9 @@
     <button class="tab" role="tab" id="tab-log" aria-controls="p-log" aria-selected="false">
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2.5" width="12" height="11" rx="1.5"/><path d="M4.5 6l2 2-2 2M8 10.5h3.5"/></svg>
       Журнал <span class="count" id="log-count"></span></button>
-    <div class="foot" id="foot"></div>
+    <button class="foot" type="button" id="foot" title="Открыть папку данных">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M1.5 4.5v8a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1H8L6.5 3h-4a1 1 0 0 0-1 1.5z"/></svg>
+      Папка данных</button>
   </nav>
 
   <main>
@@ -134,13 +136,15 @@
         </div>
       </div>
 
-      <div class="notes" aria-label="Коды в колонке Note">
-        <span>Коды в колонке Note:</span>
-        <span class="note-code"><b>1</b><span>Патогенный</span></span>
-        <span class="note-code"><b>2</b><span>Вероятно патогенный</span></span>
-        <span class="note-code"><b>3</b><span>ВНЗ</span></span>
-        <span class="note-code"><b>7</b><span>Не связан с диагнозом</span></span>
-        <span class="note-code"><b>8</b><span>Носительство</span></span>
+      <div class="card">
+        <h3>Коды в колонке Note</h3>
+        <div class="notes">
+          <span class="note-code"><b>1</b><span>Патогенный</span></span>
+          <span class="note-code"><b>2</b><span>Вероятно патогенный</span></span>
+          <span class="note-code"><b>3</b><span>ВНЗ</span></span>
+          <span class="note-code"><b>7</b><span>Не связан с диагнозом</span></span>
+          <span class="note-code"><b>8</b><span>Носительство</span></span>
+        </div>
       </div>
     </section>
 
@@ -148,30 +152,15 @@
     <section role="tabpanel" id="p-templates" aria-labelledby="tab-templates" hidden>
       <div>
         <h2>Шаблоны заключений</h2>
-        <p class="hint">Шаблон — документ Word с полями вида <span class="mono">{{ patient.id }}</span>. Начните с образца
-          и сверяйтесь со списком полей. Свои шаблоны хранятся в папке данных и не пропадают при обновлении;
-          они же видны в окне заключения в браузере.</p>
+        <p class="hint">Документ Word с полями вида <span class="mono">{{ patient.id }}</span>. Свои шаблоны не пропадают
+          при обновлении.</p>
       </div>
       <div class="row">
         <button class="btn primary" type="button" id="add-tpl">Добавить шаблон…</button>
-        <button class="btn" type="button" id="sample-tpl">Сохранить образец…</button>
-        <button class="btn ghost" type="button" id="fields-tpl" aria-expanded="false">Список полей</button>
+        <button class="btn" type="button" id="fields-tpl" aria-haspopup="dialog">Список полей</button>
         <span class="spacer"></span>
         <button class="btn ghost" type="button" id="tpl-folder">Папка шаблонов</button>
       </div>
-      <form class="card add-form" id="add-form" hidden>
-        <h3>Новый шаблон</h3>
-        <div class="fields three">
-          <label class="field">Файл<input type="text" id="add-file" readonly></label>
-          <label class="field">Название<input type="text" id="add-title" required autocomplete="off"></label>
-          <label class="field">Для документа<select id="add-kind"></select></label>
-        </div>
-        <div class="row end">
-          <button class="btn ghost" type="button" id="add-cancel">Отмена</button>
-          <button class="btn primary" type="submit" id="add-submit">Добавить</button>
-        </div>
-      </form>
-      <div class="card" id="fields-box" hidden></div>
       <div class="card"><div class="list" id="tpl-list"></div></div>
     </section>
 
@@ -179,19 +168,14 @@
     <section role="tabpanel" id="p-environments" aria-labelledby="tab-environments" hidden>
       <div>
         <h2>Окружения</h2>
-        <p class="hint">Окружение — это Python с OpenCRAVAT и его папки: модули, задания, настройки. Обычно ничего менять
-          не нужно: ClinReport работает во встроенном окружении. Другое выбирают, если на компьютере уже есть свой
-          OpenCRAVAT с модулями и базами. Шаблоны и настройки ClinReport общие для всех окружений.</p>
+        <p class="hint">Обычно ничего менять не нужно: ClinReport работает во встроенном OpenCRAVAT. Другое окружение
+          выбирают, если на компьютере уже есть свой OpenCRAVAT с модулями и базами.</p>
       </div>
       <div class="row">
-        <button class="btn primary" type="button" id="env-search">Найти окружения</button>
-        <button class="btn" type="button" id="env-search-deep"
-          title="Просмотреть все папки на дисках: дольше, зато найдёт окружения в нестандартных местах">Глубокий поиск</button>
+        <button class="btn primary" type="button" id="env-search" aria-haspopup="dialog">Найти окружения</button>
         <button class="btn ghost" type="button" id="env-add">Указать Python…</button>
       </div>
-      <div class="card env-search" id="env-search-box" hidden></div>
-      <div class="card"><div class="env-list" id="env-list" role="listbox" aria-label="Окружения"></div></div>
-      <div class="card" id="env-detail" hidden></div>
+      <div class="card"><div class="env-list" id="env-list" aria-label="Окружения"></div></div>
     </section>
 
     <!-- ============ SETTINGS ============ -->
@@ -262,11 +246,18 @@
   </main>
 </div>
 <div class="toast" id="toast" role="status" hidden></div>
+<div class="modal" id="modal" hidden>
+  <div class="modal-box" id="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-head"><h2 id="modal-title"></h2>
+      <button class="modal-x" type="button" id="modal-close" aria-label="Закрыть">×</button></div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
 <div class="shutdown" id="shutdown" role="alertdialog" aria-modal="true" aria-labelledby="shutdown-title" hidden>
   <div class="shutdown-box">
     <b id="shutdown-title">Завершение работы ClinReport</b>
-    <span id="shutdown-text">Останавливаю OpenCRAVAT…</span>
-    <div class="bar busy" id="shutdown-bar"><i></i></div>
+    <div class="shutdown-step"><span class="spinner" id="shutdown-spinner" aria-hidden="true"></span>
+      <span id="shutdown-text">Останавливаю OpenCRAVAT…</span></div>
     <small>Окно закроется само, когда OpenCRAVAT остановится.</small>
   </div>
 </div>

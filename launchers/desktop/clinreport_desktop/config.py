@@ -96,6 +96,29 @@ def forget_python(python: str):
     save(settings)
 
 
+def job_results(jobs_dir) -> list:
+    """Finished OpenCRAVAT jobs (<jobs_dir>/<user>/<job>/*.sqlite), newest first. Results opened in the browser never
+    pass through the launcher, so without these «Недавние результаты» stayed empty."""
+    found = []
+    for result in Path(os.path.abspath(jobs_dir)).glob('*/*/*.sqlite'):
+        try:
+            found.append({'path': str(result), 'opened': result.stat().st_mtime})
+        except OSError:
+            continue
+    found.sort(key=lambda r: r['opened'], reverse=True)
+    return found[:RECENT_MAX]
+
+
+def recent_results(jobs_dir=None) -> list:
+    """Results opened from the window plus finished jobs, newest first, each once."""
+    items = list(load()['recent'])
+    seen = {os.path.normcase(r['path']) for r in items}
+    if jobs_dir:
+        items += [r for r in job_results(jobs_dir) if os.path.normcase(r['path']) not in seen]
+    items.sort(key=lambda r: r.get('opened') or 0, reverse=True)
+    return items[:RECENT_MAX]
+
+
 def forget_result(path: str):
     settings = load()
     settings['recent'] = [r for r in settings['recent'] if os.path.normcase(r['path']) != os.path.normcase(path)]

@@ -26,7 +26,7 @@ directly. Shared paths and the route loader are in `tests/helpers.py`; fixtures 
 | `core/` | `service` (open, process default/LPWGS, render with edits, settings), templates (store, checks, upload over aiohttp), database (Postgres code against SQLite), login mode and settings scopes, CLINBIO, `float2percent` |
 | `routes/` | `route.py` loaded the way OpenCRAVAT does, mounted on aiohttp (OC 2.x) and Flask (OC 3.x): JSON errors, content types, login |
 | `cli/` | the CLI end to end on a trio (needs examples) |
-| `desktop/` | launcher logic without a window: config, module sync, single instance, updates (version order, release choice, checked download, silent installer), session logs (files, retention, thread errors, the page's messages), environments (probe without importing `cravat`, the version matrix, deep search, install/update/remove with rollback, the command for another OpenCRAVAT, leftover pid) |
+| `desktop/` | launcher logic without a window: config, module sync, single instance, updates (version order, release choice, checked download, silent installer), session logs (files, retention, thread errors, the page's messages), environments (probe without importing `cravat`, the version matrix, install/update/remove with rollback, the command for another OpenCRAVAT, leftover pid) |
 | `packaging/` | installer rules on the `.iss` source (AppId, what is deleted, mutex), `build.py` helpers (macOS wheel/otool parsing, stack consistency, one version number), `install_extension.py` |
 
 ### Another OpenCRAVAT («Окружения»), end to end
