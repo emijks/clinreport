@@ -10,7 +10,8 @@ The stack is pinned in packaging/stack.toml:
 3. base modules from KarchinLab at `karchinlab_modules_ref`, and our modules
    (modules/<type>/<module>) → <out>/ClinReport/modules
 4. bundle.json (versions, managed modules, update source)
-5. --package: Windows → Inno Setup installer (needs ISCC); macOS → ClinReport.app in a .dmg; Linux → .tar.gz
+5. --package: Windows → Inno Setup installer (needs ISCC); macOS → ClinReport.app in a .dmg;
+   Linux → .tar.gz (ClinReport/ with the `clinreport` start script; `clinreport --install` installs it)
 
 Run it with any Python ≥ 3.12; nothing is installed into that Python.
 """
@@ -310,6 +311,8 @@ def build(out: Path, version: str) -> Path:
         shutil.copy2(HERE / 'windows' / 'clinreport.ico', app / 'clinreport.ico')
     if sys.platform == 'darwin':
         verify_macos_minimum(app)
+    if sys.platform.startswith('linux'):
+        write_linux_start(app)
     print(f'built {app}')
     return app
 
@@ -393,17 +396,49 @@ def create_dmg(staging: Path, dmg: Path, attempts=5, pause=10):
             time.sleep(pause)
 
 
-def package_linux(app: Path, version: str, out: Path) -> Path:
-    archive = out / f'ClinReport-{version}-{platform_tag()}.tar.gz'
+LINUX_START = '''#!/bin/sh
+# ClinReport: starts the bundled Python with the launcher. Works from wherever this folder is, also through the
+# ~/.local/bin/clinreport link that `clinreport --install` creates.
+#   clinreport [RESULT.sqlite]            open the window
+#   clinreport --install                  copy this folder to ~/.local/share/clinreport/app, add a menu entry
+#   clinreport --uninstall [--purge]      remove the program (with --purge: also the data)
+here="$(dirname "$(readlink -f "$0")")"
+exec "$here/python/bin/python3" -I -m clinreport_desktop "$@"
+'''
+
+
+def write_linux_start(app: Path):
+    """The start script and the menu icon (clinreport_desktop/linuxapp.py: START_SCRIPT, ICON) at the bundle's top."""
     start = app / 'clinreport'
-    start.write_text(
-        '#!/bin/sh\nexec "$(dirname "$(readlink -f "$0")")/python/bin/python3" -I -m clinreport_desktop "$@"\n',
-        encoding='utf-8',
-    )
+    start.write_text(LINUX_START, encoding='utf-8')
     start.chmod(0o755)
+    shutil.copy2(HERE / 'icon.png', app / 'clinreport.png')
+
+
+def package_linux(app: Path, version: str, out: Path) -> Path:
+    """ClinReport-<version>-linux-<arch>.tar.gz with one folder, ClinReport/ (also the in-app update's archive)."""
+    archive = out / f'ClinReport-{version}-{platform_tag()}.tar.gz'
+    if not (app / 'clinreport').is_file():
+        write_linux_start(app)  # a bundle built before the start script was part of the build
     with tarfile.open(archive, 'w:gz') as tar:
-        tar.add(app, arcname='ClinReport')
+        tar.add(app, arcname='ClinReport', filter=_no_pycache)
     return archive
+
+
+# cravat/constants.py creates these next to itself on import (Linux: oc_root = the package folder); not in the wheel.
+OC_IMPORT_FOLDERS = ('conf', 'jobs', 'logs', 'metrics', 'modules', 'workspace')
+
+
+def _no_pycache(info: tarfile.TarInfo):
+    """Leave out bytecode written by test runs of the bundle and the folders OpenCRAVAT creates when imported."""
+    parts = info.name.split('/')
+    if '__pycache__' in parts:
+        return None
+    if 'site-packages' in parts:
+        rest = parts[parts.index('site-packages') + 1 :]
+        if len(rest) >= 2 and rest[0] == 'cravat' and rest[1] in OC_IMPORT_FOLDERS:
+            return None
+    return info
 
 
 def main():

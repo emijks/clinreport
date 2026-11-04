@@ -125,3 +125,43 @@ def test_empty_module_folders_are_caught(build, tmp_path):
         'mappers/hg38',
         'reporters/excelreporter',
     ]
+
+
+def test_linux_archive_has_the_start_script_and_no_runtime_leftovers(build, tmp_path, monkeypatch):
+    """ClinReport-<v>-linux-<arch>.tar.gz: one folder, the start script + icon linuxapp expects, no bytecode, and not the
+    folders OpenCRAVAT creates in its package folder when the bundle was test-run."""
+    import tarfile
+
+    from clinreport_desktop import linuxapp
+
+    app = tmp_path / 'ClinReport'
+    site = app / 'python' / 'lib' / 'python3.13' / 'site-packages'
+    for rel in ('cravat/__init__.py', 'cravat/gui/app.py', 'cravat/conf/cravat-system.yml', 'cravat/jobs/x',
+                'cravat/workspace/celery/x', 'cravat/__pycache__/a.pyc', 'webview/__init__.py', 'other/modules/m.py'):
+        (site / rel).parent.mkdir(parents=True, exist_ok=True)
+        (site / rel).write_text('x', encoding='utf-8')
+    (app / 'bundle.json').write_text('{}', encoding='utf-8')
+    monkeypatch.setattr(build, 'platform_tag', lambda: 'linux-x64')
+    archive = build.package_linux(app, '3.1.0', tmp_path)
+    assert archive.name == 'ClinReport-3.1.0-linux-x64.tar.gz'
+    with tarfile.open(archive) as tar:
+        names = set(tar.getnames())
+        start = tar.getmember(f'ClinReport/{linuxapp.START_SCRIPT}')
+    assert {n.split('/')[0] for n in names} == {'ClinReport'}
+    assert start.mode & 0o111 and f'ClinReport/{linuxapp.ICON}' in names
+    sp = 'ClinReport/python/lib/python3.13/site-packages'
+    assert {f'{sp}/cravat/__init__.py', f'{sp}/cravat/gui/app.py', f'{sp}/webview/__init__.py', f'{sp}/other/modules/m.py'} <= names
+    assert not [n for n in names if '__pycache__' in n or any(f'{sp}/cravat/{d}' in n for d in build.OC_IMPORT_FOLDERS)]
+
+
+def test_linux_start_script_runs_the_bundled_python_through_links(build, tmp_path):
+    build.write_linux_start(tmp_path)
+    script = (tmp_path / 'clinreport').read_text(encoding='utf-8')
+    assert script.startswith('#!/bin/sh\n') and 'readlink -f "$0"' in script  # ~/.local/bin/clinreport is a link
+    assert 'python/bin/python3" -I -m clinreport_desktop "$@"' in script
+
+
+def test_linux_gui_stack_is_pinned():
+    requirements = (ROOT / 'packaging' / 'requirements.txt').read_text(encoding='utf-8')
+    assert 'PyGObject==' in requirements and 'pycairo==' in requirements
+    assert all('sys_platform == "linux"' in line for line in requirements.splitlines() if line.startswith(('PyGObject', 'pycairo')))

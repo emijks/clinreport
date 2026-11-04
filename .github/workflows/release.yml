@@ -98,5 +98,6 @@ jobs:
           files: |
             artifacts/**/*.exe
             artifacts/**/*.dmg
+            artifacts/**/*.tar.gz
             artifacts/**/*.zip
           fail_on_unmatched_files: true

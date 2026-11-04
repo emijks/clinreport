@@ -52,6 +52,10 @@ jobs:
           cache-dependency-path: |
             requirements-dev.txt
             packaging/requirements.txt
+      # PyGObject (the Linux window, packaging/requirements.txt) has no Linux wheels: pip builds it.
+      - name: Build dependencies of PyGObject
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libgirepository-2.0-dev libcairo2-dev
       - run: pip install -r requirements-dev.txt
       # Tests that need the example results (patient data, never in the repository) are skipped here.
       # Coverage is reported, not enforced yet (pyproject.toml fail_under is the target).
@@ -77,6 +81,7 @@ jobs:
           - { os: windows-latest, name: windows-x64 }
           - { os: macos-15, name: macos-arm64 }
           - { os: macos-15-intel, name: macos-x64 }
+          - { os: ubuntu-24.04, name: linux-x64 }
     defaults:
       run:
         shell: bash
@@ -97,6 +102,14 @@ jobs:
         shell: pwsh
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      # Linux: PyGObject's build dependencies; WebKitGTK and GTK as on a desktop; Xvfb for the window self-test.
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libgirepository-2.0-dev libcairo2-dev \
+            gir1.2-gtk-3.0 gir1.2-webkit2-4.1 xvfb xauth
+          echo "WINDOW=xvfb-run -a" >> "$GITHUB_ENV"
       - name: Version
         run: |
           VERSION="${{ inputs.version }}"
@@ -129,16 +142,30 @@ jobs:
         env:
           CLINREPORT_DATA_DIR: ${{ runner.temp }}/clinreport-data-window
         run: |
-          "$PY" -I -m clinreport_desktop --selftest "$RUNNER_TEMP/selftest.json"
+          $WINDOW "$PY" -I -m clinreport_desktop --selftest "$RUNNER_TEMP/selftest.json"
           cat "$RUNNER_TEMP/selftest.json"
           cat "$CLINREPORT_DATA_DIR"/logs/sessions/*.log || true
           "$PY" -I -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1], encoding='utf-8'))['ok'] else 1)" "$RUNNER_TEMP/selftest.json"
+      # Linux: everything ClinReport writes must be in its data folder — install, open the window, purge, and the
+      # throw-away home must be empty again (docs/decisions/0016-linux-desktop.md).
+      - name: Install, self-test, uninstall (Linux)
+        if: runner.os == 'Linux'
+        env:
+          HOME: ${{ runner.temp }}/home
+        run: |
+          mkdir -p "$HOME"
+          packaging/dist/ClinReport/clinreport --install
+          xvfb-run -a "$HOME/.local/bin/clinreport" --selftest "$RUNNER_TEMP/selftest-installed.json"
+          python -I -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1], encoding='utf-8'))['ok'] else 1)" "$RUNNER_TEMP/selftest-installed.json"
+          "$HOME/.local/bin/clinreport" --uninstall --purge
+          left=$(find "$HOME" -type f)
+          if [ -n "$left" ]; then echo "::error::left outside the data folder after --purge:"; echo "$left"; exit 1; fi
       - name: Package
         run: python packaging/build.py --version "$VERSION" --package-only
-      # Not zipped: the artifact is the installer itself, named after it (ClinReport-<version>-<platform>.exe/.dmg).
+      # Not zipped: the artifact is the installer itself, named after it (ClinReport-<version>-<platform>.exe/.dmg/.tar.gz).
       - uses: actions/upload-artifact@v7
         with:
-          path: packaging/dist/ClinReport-*-${{ matrix.name }}.${{ runner.os == 'Windows' && 'exe' || 'dmg' }}
+          path: packaging/dist/ClinReport-*-${{ matrix.name }}.${{ runner.os == 'Windows' && 'exe' || runner.os == 'Linux' && 'tar.gz' || 'dmg' }}
           archive: false
           if-no-files-found: error
           retention-days: 14
