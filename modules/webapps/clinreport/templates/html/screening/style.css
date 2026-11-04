@@ -44,6 +44,7 @@
   @top-right {
     content: "СТР. " counter(page, decimal-leading-zero);
     white-space: nowrap;  /* Paged.js делает поле уже, чем WeasyPrint: без этого «СТР. 02» переносится */
+    text-align: right;    /* WeasyPrint и так прижимает вправо, Paged.js — только если сказать явно */
     font: 400 8.5pt var(--sans);
     color: var(--ink);
     vertical-align: bottom;

@@ -31,13 +31,17 @@ modules/webapps/clinreport/templates/
 ## How a document is made — `clinreport_core/output.py`
 
 ```
-context (from the page) ──► output.namespace_for(kind)   screening: screening.prepare() checks + builds the namespace
+context (from the page) ──► output.namespace_for(kind)   screening: screening.prepare() — «_» for empty fields, numbered citations
                                 │                         other kinds: the context as is
               ┌─────────────────┼──────────────────────────────┐
            docx: docxtpl     html: Jinja → one .html file     pdf: that HTML → pdf_engine()
                              (CSS, fonts, images inlined,       weasyprint-exe │ weasyprint │ browser
                               CSP, no outside references)
 ```
+
+HTML modes (`output.html_document(mode=…)`): `pdf` — what WeasyPrint reads, no script; `file` — the HTML download,
+Paged.js lays the pages out and `PREVIEW_CSS` shows them like a PDF viewer; `print` — the browser PDF, then the print
+dialog. Both browser modes add `PAGEDJS_FIX_CSS` after the layout (see the pitfalls in AGENTS.md).
 
 **PDF engines** (`pdf_engine()`, decided once per process; the page learns it as `layouts[kind].pdf_mode`):
 

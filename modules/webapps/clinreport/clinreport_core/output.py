@@ -19,6 +19,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import io
+import json
 import mimetypes
 import os
 import re
@@ -35,11 +36,35 @@ FORMATS = {  # format: (content type, extension, label on the page)
 }
 PAGEDJS = Path(__file__).resolve().parent.parent / 'vendor' / 'pagedjs' / 'paged.polyfill.js'
 CSP_STATIC = "default-src 'none'; style-src 'unsafe-inline'; font-src data:; img-src data:"
-PRINT_SCRIPT = (
-    # Paged.js reads window.PagedConfig before it lays out the pages; after that, the print dialog.
-    'window.PagedConfig = {auto: true, after: function () { setTimeout(function () { window.print(); }, 300); }};'
+# Paged.js 0.4.3 applies a margin box's `width` (e.g. `@top-right { width: 25% }`, a share of the page in WeasyPrint)
+# twice: to the grid column and again (as width and max-width) to the box inside it (25% of 25%) — the header shrinks and loses its right
+# alignment. The boxes must simply fill the columns Paged.js sized.
+PAGEDJS_FIX_CSS = (
+    '.pagedjs_margin-top-left, .pagedjs_margin-top-center, .pagedjs_margin-top-right,'
+    ' .pagedjs_margin-bottom-left, .pagedjs_margin-bottom-center, .pagedjs_margin-bottom-right'
+    ' { width: auto !important; max-width: none !important; }'
 )
+# An opened .html file shows its pages like a PDF viewer: Paged.js lays them out, then these rules centre them on a
+# grey background (screen only: printing and WeasyPrint never see them).
+PREVIEW_CSS = (
+    '@media screen {'
+    ' html, body { margin: 0; background: #525659; }'
+    ' .pagedjs_pages { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 24px 0 48px; }'
+    ' .pagedjs_page { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3), 0 6px 24px rgba(0,0,0,.25); } }'
+)
+
+
+def _paged_config(css: str, then: str = '') -> str:
+    """window.PagedConfig: when Paged.js has laid out the pages, add `css` (added any earlier, Paged.js would rewrite
+    it: it processes every stylesheet present when it starts), then run `then`."""
+    return ('window.PagedConfig = {auto: true, after: function () { var s = document.createElement("style");'
+            f' s.textContent = {json.dumps(css)}; document.head.appendChild(s); {then}}}}};')
+
+
+PREVIEW_SCRIPT = _paged_config(PAGEDJS_FIX_CSS + ' ' + PREVIEW_CSS)
+PRINT_SCRIPT = _paged_config(PAGEDJS_FIX_CSS, 'setTimeout(function () { window.print(); }, 300); ')
 WEASYPRINT_TIMEOUT = 180
+HTML_MODES = ('pdf', 'file', 'print')
 
 
 class Document:
@@ -105,9 +130,17 @@ def jinja_environment(template_dir: Path, undefined=None):
     return env
 
 
-def html_document(namespace: dict, template_dir: Path, *, for_print: bool = False, undefined=None) -> str:
-    """template.html of template_dir rendered with namespace; for_print adds Paged.js and the print call."""
-    scripts = [PRINT_SCRIPT, PAGEDJS.read_text(encoding='utf-8')] if for_print else []
+def html_document(namespace: dict, template_dir: Path, *, mode: str = 'pdf', undefined=None) -> str:
+    """template.html of template_dir rendered with namespace.
+
+    mode 'pdf':   as WeasyPrint reads it — no script;
+         'file':  the HTML download — Paged.js lays the pages out on screen, centred like a PDF viewer (PREVIEW_CSS);
+         'print': the browser PDF — the same, then the print dialog (PRINT_SCRIPT).
+    """
+    if mode not in HTML_MODES:
+        raise ValueError(f'unknown mode {mode}')
+    scripts = {'pdf': [], 'file': [PREVIEW_SCRIPT, PAGEDJS.read_text(encoding='utf-8')],
+               'print': [PRINT_SCRIPT, PAGEDJS.read_text(encoding='utf-8')]}[mode]
     csp = CSP_STATIC + "; script-src " + (' '.join(f"'sha256-{_sha256(s)}'" for s in scripts) or "'none'")
     page = jinja_environment(template_dir, undefined).get_template('template.html').render(dict(namespace, csp=csp))
     if scripts:
@@ -250,7 +283,7 @@ def render(context: dict, kind: str, sources: dict, fmt: str) -> Document:
         return Document(docx_document(richtextify(context), sources['docx']), fmt)
     namespace = namespace_for(kind, context)
     if fmt == 'html':
-        return Document(html_document(namespace, sources['html']).encode('utf-8'), fmt)
+        return Document(html_document(namespace, sources['html'], mode='file').encode('utf-8'), fmt)
     if pdf_engine() == 'browser':
-        return Document(html_document(namespace, sources['html'], for_print=True).encode('utf-8'), fmt, print_in_browser=True)
+        return Document(html_document(namespace, sources['html'], mode='print').encode('utf-8'), fmt, print_in_browser=True)
     return Document(html_to_pdf(html_document(namespace, sources['html'])), fmt)

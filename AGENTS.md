@@ -112,6 +112,9 @@ fails on unknown fields), `ruff check .`, the PDF looked at (WeasyPrint) and the
 - **No new tabs for printing**: Safari blocks a window opened after an `await` (the report check, the request), so the
   browser PDF is laid out and printed in a hidden, off-screen iframe (`printReport`; `display:none` would leave Paged.js
   nothing to measure). The save picker after the «Сохранить с «_»» click still counts as the user's gesture.
+- **Paged.js rewrites every stylesheet present when it starts** (styles added before are lost or altered): styles for
+  its output go in through `PagedConfig.after` (`output._paged_config`). It also applies a margin box's `width` twice
+  (column and box, as `width` + `max-width`): `PAGEDJS_FIX_CSS` resets them, or `@top-right { width: 25% }` shrinks.
 - **WeasyPrint ≥ 70 stops a render with `FatalURLFetchingError`, a `BaseException`** — `except Exception` misses it;
   `output.html_to_pdf` converts it. Its `url_fetcher` is a `URLFetcher` object now, not a function.
 - **`build.py` drops `*.md` from modules**: license and notice files in a template or `vendor/` must not be Markdown.
