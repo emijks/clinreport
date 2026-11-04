@@ -1,0 +1,5 @@
+{
+  "_comment": "Built-in HTML template (clinreport_core/templates.py). Formats: html, pdf. Context: clinreport_core/screening.py.",
+  "title": "Профилактический ДНК-скрининг",
+  "kind": "screening"
+}

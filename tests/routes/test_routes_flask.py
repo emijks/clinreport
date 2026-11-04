@@ -73,3 +73,20 @@ def test_local_mode_opens_by_path(service, trio_db):
     client = make_app(multiuser=False)
     response = client.get('/webapps/clinreport/open', query_string={'dbpath': trio_db})
     assert response.status_code == 200 and len(response.get_json()['samples']) == 3
+
+
+def test_render_html_and_browser_pdf(service, monkeypatch):
+    import copy
+
+    from clinreport_core import output, screening
+
+    monkeypatch.setattr(output, '_engine', 'browser')
+    client = make_app(multiuser=False)
+    for fmt in ('html', 'pdf'):
+        response = client.post('/webapps/clinreport/render', json={
+            'context': copy.deepcopy(screening.EXAMPLE), 'kind': 'screening', 'template': 'screening', 'format': fmt,
+            'filename': 'Отчёт ДНК-скрининга (s1)'})
+        assert response.status_code == 200, response.get_data(as_text=True)
+        assert response.headers['Content-Type'] == 'text/html; charset=utf-8'
+        assert (response.headers.get('X-ClinReport-Print') == '1') == (fmt == 'pdf')
+        assert 'Петрова Анна Сергеевна' in response.get_data(as_text=True)

@@ -107,3 +107,25 @@ def test_login_mode_uses_the_multiuser_session(service, monkeypatch):
         assert response.status == 200 and (await response.json())['username'] == 'alice'
 
     run(with_client(check))
+
+
+def test_render_html_and_browser_pdf_over_http(service, monkeypatch):
+    """aiohttp takes the charset apart from the content type; the print marker header reaches the page."""
+    import copy
+
+    from clinreport_core import output, screening
+
+    monkeypatch.setattr(output, '_engine', 'browser')
+
+    async def check(client):
+        for fmt in ('html', 'pdf'):
+            response = await client.post('/webapps/clinreport/render', json={
+                'context': copy.deepcopy(screening.EXAMPLE), 'kind': 'screening', 'template': 'screening',
+                'format': fmt, 'filename': 'Отчёт ДНК-скрининга (s1).docx'})
+            assert response.status == 200, await response.text()
+            assert response.headers['Content-Type'] == 'text/html; charset=utf-8'
+            assert 'filename="report.html"' in response.headers['Content-Disposition']
+            assert (response.headers.get('X-ClinReport-Print') == '1') == (fmt == 'pdf')
+            assert 'Петрова Анна Сергеевна' in await response.text()
+
+    run(with_client(check))

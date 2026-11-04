@@ -13,7 +13,7 @@ from docx import Document
 
 def docx_with(text: str, base='DZM') -> bytes:
     """A built-in template with one more paragraph containing `text`."""
-    document = Document(str(tpl.BUILTIN_DIR / f'{base}.docx'))
+    document = Document(str(tpl.DOCX_DIR / f'{base}.docx'))
     document.add_paragraph(text)
     buffer = io.BytesIO()
     document.save(buffer)
@@ -31,7 +31,14 @@ def add(service, title, text='x', kind='default', base='DZM', caller=None, **ext
 
 @pytest.mark.parametrize(('template_id', 'kind'), [(tid, kind) for tid, _title, kind in tpl.BUILTIN])
 def test_builtin_templates_use_only_known_fields(template_id, kind):
-    assert tpl.check(tpl.BUILTIN_DIR / f'{template_id}.docx', kind) == {'ok': True, 'error': None, 'unknown': []}
+    """Every file of every built-in template: the .docx and the HTML folder (templates/docx, templates/html)."""
+    formats = tpl.builtin_formats(template_id)
+    assert formats, f'{template_id}: no templates/docx/{template_id}.docx and no templates/html/{template_id}/'
+    ok = {'ok': True, 'error': None, 'unknown': []}
+    if 'docx' in formats:
+        assert tpl.check(tpl.DOCX_DIR / f'{template_id}.docx', kind) == ok
+    if 'html' in formats:
+        assert tpl.check_html(tpl.HTML_DIR / template_id, kind) == ok
 
 
 def test_check_names_misspelled_fields_with_suggestions():
@@ -77,7 +84,7 @@ def test_add_list_render_choose_delete(service, single_db):
     assert listing['templates'][-1]['title'] == 'НМИЦ 2026' and listing['editable']
 
     processed = service.process({'dbpath': single_db})
-    assert {'id': template['id'], 'title': 'НМИЦ 2026'} in processed['layouts']['default']['templates']
+    assert {'id': template['id'], 'title': 'НМИЦ 2026', 'formats': ['docx']} in processed['layouts']['default']['templates']
     assert processed['layouts']['default']['template_default'] == 'DZM'
 
     rendered = service.render(

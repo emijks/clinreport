@@ -27,7 +27,7 @@ from playwright.sync_api import sync_playwright
 DIAGNOSIS = 'E2E: диагноз из браузера'
 CUSTOM_MARK = 'E2E: свой шаблон лаборатории'
 TEMPLATES_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'modules', 'webapps', 'clinreport', 'templates'
+    os.path.dirname(os.path.abspath(__file__)), '..', '..', 'modules', 'webapps', 'clinreport', 'templates', 'docx'
 )
 
 

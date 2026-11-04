@@ -86,7 +86,13 @@ def _error(exc: Exception):
 
 
 def _content_disposition(filename: str) -> str:
-    return f"attachment; filename=\"report.docx\"; filename*=UTF-8''{quote(filename)}"
+    """ASCII fallback name with the real extension, the real (Cyrillic) name in filename*."""
+    extension = os.path.splitext(filename)[1] or '.docx'
+    return f"attachment; filename=\"report{extension}\"; filename*=UTF-8''{quote(filename)}"
+
+
+def _file_headers(result) -> dict:
+    return dict(result.headers, **{'Content-Disposition': _content_disposition(result.filename)})
 
 
 NOT_JSON = 'Некорректный запрос (ожидается JSON).'
@@ -131,10 +137,12 @@ def _aiohttp_routes():
                 status, payload = _error(exc)
                 return web.Response(text=_dumps(payload), status=status, content_type='application/json')
             if isinstance(result, service.FileResult):
-                return web.Response(
+                content_type, _sep, charset = result.content_type.partition('; charset=')
+                return web.Response(  # aiohttp takes the charset separately
                     body=result.data,
-                    content_type=result.content_type,
-                    headers={'Content-Disposition': _content_disposition(result.filename)},
+                    content_type=content_type,
+                    charset=charset or None,
+                    headers=_file_headers(result),
                 )
             return web.Response(text=_dumps(result), content_type='application/json')
 
@@ -172,11 +180,7 @@ def _flask_routes():
                 status, payload = _error(exc)
                 return Response(_dumps(payload), status=status, mimetype='application/json')
             if isinstance(result, service.FileResult):
-                return Response(
-                    result.data,
-                    mimetype=result.content_type,
-                    headers={'Content-Disposition': _content_disposition(result.filename)},
-                )
+                return Response(result.data, content_type=result.content_type, headers=_file_headers(result))
             return Response(_dumps(result), mimetype='application/json')
 
         return handler

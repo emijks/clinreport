@@ -1,8 +1,15 @@
 """Report templates: the built-in ones shipped with the module plus the lab's own.
 
-Custom templates live in `<conf dir>/clinreport/templates/` (`<id>.docx` + `templates.json`),
-next to the settings, so reinstalling or updating the module keeps them. Templates are
-docxtpl (.docx with Jinja tags); see docs/05-data-model.md#4-template-variables.
+Built-in templates live in the module, one id per design and a file per format:
+
+    templates/docx/<id>.docx            Word (docxtpl)                   -> format docx
+    templates/html/<id>/template.html   Jinja HTML + CSS Paged Media     -> formats html and pdf
+                       data/            fixed texts the report kind reads (screening: study.json, genes_acmg.json)
+
+A template offers every format it has a file for (builtin_formats). How a document is made: output.py.
+Custom templates (the lab's own, .docx only) live in `<conf dir>/clinreport/templates/` (`<id>.docx` +
+`templates.json`), next to the settings, so reinstalling or updating the module keeps them.
+Adding a template: docs/development/templates.md; fields: docs/reference/data-model.md section 4.
 
 check() renders a template against an example report and lists every field the template
 asks for that the report does not have — typos like `{{ patient.birth_dat }}` would
@@ -25,17 +32,39 @@ from jinja2 import Environment, Undefined
 from jinja2.exceptions import TemplateError
 
 BUILTIN_DIR = Path(__file__).resolve().parent.parent / 'templates'
-# (id, title, kind)
+DOCX_DIR = BUILTIN_DIR / 'docx'
+HTML_DIR = BUILTIN_DIR / 'html'
+# (id, title, kind); the formats come from the files (builtin_formats)
 BUILTIN = (
     ('DZM', 'DZM', 'default'),
     ('FND', 'FND', 'default'),
     ('10x', '10x', '10x'),
+    ('screening', 'Профилактический ДНК-скрининг', 'screening'),
 )
 KINDS = {
     'default': 'Стандартное заключение',
     '10x': 'LPWGS (технический документ)',
+    'screening': 'Профилактический ДНК-скрининг',
 }
-DEFAULT_FOR_KIND = {'default': 'DZM', '10x': '10x'}
+DEFAULT_FOR_KIND = {'default': 'DZM', '10x': '10x', 'screening': 'screening'}
+FORMAT_ORDER = ('pdf', 'html', 'docx')  # the page offers them in this order; the first is preselected
+
+
+def builtin_formats(template_id: str) -> list:
+    """Formats a built-in template has files for, in FORMAT_ORDER."""
+    found = set()
+    if (DOCX_DIR / f'{template_id}.docx').is_file():
+        found.add('docx')
+    if (HTML_DIR / template_id / 'template.html').is_file():
+        found.update(('html', 'pdf'))
+    return [f for f in FORMAT_ORDER if f in found]
+
+
+def data_dir(kind: str) -> Path:
+    """Fixed texts a report kind reads, shared by all its templates: data/ of the kind's built-in HTML template."""
+    return HTML_DIR / DEFAULT_FOR_KIND[kind] / 'data'
+
+
 MAX_TEMPLATE_BYTES = 10 * 1024 * 1024
 MANIFEST = 'templates.json'
 
@@ -90,6 +119,12 @@ _MT_ROW = {
 
 def example_context(kind: str) -> dict:
     """A report context with every field the report builder produces (see docs/05-data-model.md §3)."""
+    if kind == 'screening':
+        import copy
+
+        from .screening import EXAMPLE
+
+        return copy.deepcopy(EXAMPLE)
     if kind == '10x':
         return {
             'sample': {'id': 'ПРИМЕР-2'},
@@ -156,7 +191,7 @@ def field_paths(kind: str) -> list:
         else:
             paths.append(prefix)
 
-    walk(example_context(kind), '')
+    walk(check_context(kind), '')
     return paths
 
 
@@ -191,14 +226,86 @@ def _richtextify_row(row: dict) -> dict:
     return row
 
 
+def check_context(kind: str) -> dict:
+    """What a template of `kind` is rendered with, from the example report: the context itself, or for 'screening'
+    the namespace screening.prepare() makes of it (the templates of that kind read the namespace)."""
+    context = example_context(kind)
+    if kind == 'screening':
+        from .screening import prepare
+
+        context = prepare(context, data_dir(kind))
+        context.pop('warnings', None)
+    return context
+
+
+class _Recorder:
+    """A Jinja Undefined that remembers which attribute was missing on which object (both checks use it)."""
+
+    def __init__(self):
+        self.missing = []
+        recorder = self
+
+        class Recording(Undefined):
+            def __init__(self, hint=None, obj=None, name=None, exc=None):
+                super().__init__(hint=hint, obj=obj, name=name)
+                if name is not None:
+                    recorder.missing.append((obj, name))
+
+        self.undefined = Recording
+
+
+def check_html(template_dir, kind: str) -> dict:
+    """check() for an HTML template folder: render template.html with the example report of `kind`."""
+    from . import output
+
+    rendered = check_context(kind)
+    recorder = _Recorder()
+    try:
+        output.html_document(rendered, Path(template_dir), undefined=recorder.undefined)
+    except TemplateError as e:
+        line = f' (строка {e.lineno})' if getattr(e, 'lineno', None) else ''
+        return {'ok': False, 'error': f'Ошибка в шаблоне{line}: {e.message or e}', 'unknown': []}
+    except (OSError, ValueError) as e:
+        return {'ok': False, 'error': f'Шаблон не собирается: {e}', 'unknown': []}
+    unknown = _unknown_fields(recorder.missing, rendered)
+    return {'ok': not unknown, 'error': None, 'unknown': unknown}
+
+
+def _unknown_fields(missing, rendered) -> list:
+    owners = {}
+
+    def index(value, prefix):
+        if isinstance(value, dict):
+            owners[id(value)] = (prefix, value)
+            for key, item in value.items():
+                index(item, f'{prefix}.{key}' if prefix else key)
+        elif isinstance(value, list):
+            for item in value:
+                index(item, prefix + '[]')
+
+    index(rendered, '')
+    unknown, seen = [], set()
+    for obj, name in missing:
+        prefix, owner = owners.get(id(obj), ('', rendered if obj is None else None))
+        if obj is not None and owner is None:
+            continue
+        field = f'{prefix}.{name}' if prefix else name
+        if field in seen:
+            continue
+        seen.add(field)
+        close = difflib.get_close_matches(name, list(owner.keys()) if isinstance(owner, dict) else [], n=1)
+        unknown.append({'field': field, 'suggestion': (f'{prefix}.{close[0]}' if prefix else close[0]) if close else ''})
+    return unknown
+
+
 def check(source, kind: str) -> dict:
-    """Render `source` (path or bytes) with the example context of `kind`.
+    """Render `source` (path or bytes of a .docx) with the example context of `kind`.
 
     Returns {'ok': bool, 'error': str|None, 'unknown': [{'field', 'suggestion'}]}.
     """
     from docxtpl import DocxTemplate
 
-    context = example_context(kind)
+    context = check_context(kind)
     # Where each dict of the example lives, to name a missing attribute by its path.
     owners = {}
 
@@ -211,7 +318,12 @@ def check(source, kind: str) -> dict:
             for item in value:
                 index(item, prefix + '[]')
 
-    rendered = richtextify(context)
+    if kind == 'screening':
+        from .output import screening_docx_namespace
+
+        rendered = screening_docx_namespace(context)
+    else:
+        rendered = richtextify(context)
     index(rendered, '')
     for key, rows in rendered.items():  # richtextify copied the rows; index the copies under the same names
         if isinstance(rows, list):
@@ -284,7 +396,10 @@ class TemplateStore:
 
     # queries
     def list(self) -> list:
-        items = [{'id': tid, 'title': title, 'kind': kind, 'builtin': True} for tid, title, kind in BUILTIN]
+        items = [
+            {'id': tid, 'title': title, 'kind': kind, 'builtin': True, 'formats': builtin_formats(tid)}
+            for tid, title, kind in BUILTIN
+        ]
         for entry in self._read():
             items.append(
                 {
@@ -292,6 +407,7 @@ class TemplateStore:
                     'title': entry['title'],
                     'kind': entry['kind'],
                     'builtin': False,
+                    'formats': ['docx'],
                     'added': entry.get('added', ''),
                     'check': entry.get('check'),
                 }
@@ -307,14 +423,24 @@ class TemplateStore:
                 return item
         raise TemplateProblem(f'Неизвестный шаблон: {template_id}')
 
-    def path(self, template_id: str) -> Path:
+    def sources(self, template_id: str) -> dict:
+        """{'docx': path | None, 'html': template folder | None}."""
         for tid, _title, _kind in BUILTIN:
             if tid == template_id:
-                return BUILTIN_DIR / f'{tid}.docx'
+                formats = builtin_formats(tid)
+                return {
+                    'docx': DOCX_DIR / f'{tid}.docx' if 'docx' in formats else None,
+                    'html': HTML_DIR / tid if 'html' in formats else None,
+                }
         for entry in self._read():
             if entry['id'] == template_id:
-                return self.dir / entry['file']
+                return {'docx': self.dir / entry['file'], 'html': None}
         raise TemplateProblem(f'Неизвестный шаблон: {template_id}')
+
+    def path(self, template_id: str) -> Path:
+        """The template's .docx, else its HTML folder (shown in Explorer / Finder, «Скачать образец»)."""
+        sources = self.sources(template_id)
+        return sources['docx'] or sources['html']
 
     # changes
     def add(self, title: str, kind: str, data: bytes, replace: str = '') -> dict:
@@ -375,7 +501,15 @@ class TemplateStore:
 
     def recheck(self, template_id: str) -> dict:
         item = self.get(template_id)
-        result = check(self.path(template_id), item['kind'])
+        sources = self.sources(template_id)
+        results = [check(sources['docx'], item['kind'])] if sources['docx'] else []
+        if sources['html']:
+            results.append(check_html(sources['html'], item['kind']))
+        result = {
+            'ok': all(r['ok'] for r in results),
+            'error': next((r['error'] for r in results if r['error']), None),
+            'unknown': [u for r in results for u in r['unknown']],
+        }
         if not item['builtin']:
             with _lock:
                 entries = self._read()

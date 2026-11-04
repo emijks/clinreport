@@ -18,12 +18,15 @@ import sqlite3
 import threading
 import time
 import uuid
+import zipfile
 from pathlib import Path
 
+from . import output
 from . import templates as tpl
-from .clinreport import DEFAULT_TEMPLATES, ClinReport, render_context
+from .clinreport import DEFAULT_TEMPLATES, ClinReport
 from .database import Database, get_ru_annotations
 from .labels import LAYOUTS, context_to_payload_records
+from .screening import ReportProblem
 
 DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 SETTINGS_FILENAME = 'clinreport.json'  # local mode: the user's settings
@@ -50,10 +53,11 @@ class Unauthorized(ClientError):
 
 
 class FileResult:
-    def __init__(self, data: bytes, filename: str, content_type: str):
+    def __init__(self, data: bytes, filename: str, content_type: str, headers: dict = None):
         self.data = data
         self.filename = filename
         self.content_type = content_type
+        self.headers = headers or {}  # extra response headers (X-ClinReport-Print)
 
 
 class Caller:
@@ -335,20 +339,27 @@ def _report(clinreport: ClinReport, sample, kind: str, dbpath: str) -> dict:
     for section, key in (('patient', 'id'), ('patient', 'lab_number'), ('sample', 'id')):
         if context.get(section, {}).get(key) == 'None':
             context[section][key] = label
+    name = REPORT_NAMES.get(kind, 'Заключение') + f' ({label})'
     return {
         'label': label,
         'kind': kind,
         'is_target': sample == clinreport.target_sample,
-        'filename': f'Заключение LPWGS ({label}).docx' if kind == '10x' else f'Заключение ({label}).docx',
+        'name': name,  # file name without extension: the page adds the chosen format's
+        'filename': name + '.docx',  # kept for older pages
         'context': context,
     }
 
 
+REPORT_NAMES = {'default': 'Заключение', '10x': 'Заключение LPWGS', 'screening': 'Отчёт ДНК-скрининга'}
+MODES = ('default', 'lpwgs', 'screening')
+
+
 def process(params: dict, caller: Caller = LOCAL) -> dict:
-    """Standard mode: a default report per sample. LPWGS: target -> default, others -> 10x."""
+    """Standard mode: a default report per sample. LPWGS: target -> default, others -> 10x.
+    Screening: a «Профилактический ДНК-скрининг» report (Notes 1 and 2) per sample."""
     dbpath = _dbpath_from(params, caller)
     mode = params.get('mode', 'default')
-    if mode not in ('default', 'lpwgs'):
+    if mode not in MODES:
         raise ClientError(f'Неизвестный режим обработки: {mode}')
     annotations, warning = ru_annotations()
     clinician = load_user_settings(caller)['clinician']
@@ -359,8 +370,8 @@ def process(params: dict, caller: Caller = LOCAL) -> dict:
         raise ClientError('Неверный целевой образец.') from None
     clinreport.target_sample = target
 
-    if mode == 'default':
-        reports = [_report(clinreport, sample, 'default', dbpath) for sample in clinreport.all_samples]
+    if mode in ('default', 'screening'):
+        reports = [_report(clinreport, sample, mode, dbpath) for sample in clinreport.all_samples]
     else:
         reports = [_report(clinreport, target, 'default', dbpath)]
         reports += [_report(clinreport, s, '10x', dbpath) for s in clinreport.all_samples if s != target]
@@ -373,46 +384,64 @@ def process(params: dict, caller: Caller = LOCAL) -> dict:
 
 
 def layouts(caller: Caller = LOCAL) -> dict:
-    """labels.LAYOUTS with the current template choice per report kind ({id, title}), the user's preselected one,
-    and no database features in the desktop edition."""
+    """labels.LAYOUTS with the current template choice per report kind ({id, title, formats}), the user's preselected
+    one, and no database features in the desktop edition. Every layout also says how a PDF is made here:
+    pdf_mode 'server' (the file comes back) or 'browser' (printable HTML comes back; the page prints it)."""
     result = copy.deepcopy(LAYOUTS)
     store = _store()
     preferred = load_user_settings(caller).get('template')
     for kind, layout in result.items():
-        choices = [{'id': t['id'], 'title': t['title']} for t in store.for_kind(kind)]
+        choices = [{'id': t['id'], 'title': t['title'], 'formats': t['formats']} for t in store.for_kind(kind)]
         layout['templates'] = choices
         wanted = preferred if kind == 'default' else ''
         layout['template_default'] = wanted if wanted in [c['id'] for c in choices] else tpl.DEFAULT_FOR_KIND[kind]
         if edition() == 'desktop':
             layout['upload'] = layout['similar'] = False
+        layout['pdf_mode'] = 'browser' if output.pdf_engine() == 'browser' else 'server'
+        layout['format_labels'] = {f: label for f, (_mime, _ext, label) in output.FORMATS.items()}
     return result
 
 
 # --- document ---
 
 
-def _safe_filename(name: str, default: str) -> str:
+def _safe_filename(name: str, default: str, extension: str = '.docx') -> str:
+    """A bare file name ending in `extension` (a known document extension the caller sent is replaced)."""
     name = os.path.basename(str(name or '')).strip()
     for char in '<>:"/\\|?*':
         name = name.replace(char, '_')
-    if not name:
-        name = default
-    return name if name.lower().endswith('.docx') else name + '.docx'
+    stem, ext = os.path.splitext(name)
+    if ext.lower() in ('.docx', '.html', '.htm', '.pdf'):
+        name = stem
+    return (name or os.path.splitext(default)[0]) + extension
 
 
 def render(params: dict, caller: Caller = LOCAL) -> FileResult:
+    """Body: {context, kind, template, format: docx|html|pdf (default docx), filename}. A PDF in 'browser' mode
+    (layouts()['…']['pdf_mode']) comes back as printable HTML with the header X-ClinReport-Print: 1."""
     context = params.get('context')
     if not isinstance(context, dict):
         raise ClientError('Нет данных для формирования документа.')
-    kind = '10x' if params.get('kind') == '10x' else 'default'
+    kind = params.get('kind') if params.get('kind') in tpl.KINDS else 'default'
     template = params.get('template') or tpl.DEFAULT_FOR_KIND[kind]
+    fmt = params.get('format') or 'docx'
     store = _store()
     item = _template_error(lambda: store.get(template))
     if item['kind'] != kind:
         raise ClientError(f'Шаблон «{item["title"]}» не подходит для этого документа.')
-    buffer = io.BytesIO()
-    render_context(context, str(store.path(template))).save(buffer)
-    return FileResult(buffer.getvalue(), _safe_filename(params.get('filename'), 'report.docx'), DOCX_MIME)
+    if fmt not in item['formats']:
+        raise ClientError(f'Шаблон «{item["title"]}» не делает документ в формате {fmt.upper()}.')
+    try:
+        document = output.render(context, kind, store.sources(template), fmt)
+    except ReportProblem as e:
+        raise ClientError('Документ не собран:\n' + '\n'.join(e.problems)) from None
+    except output.PdfUnavailable as e:
+        raise ClientError(f'PDF не получился: {e}') from None
+    name = _safe_filename(params.get('filename'), 'report.docx', document.extension)
+    result = FileResult(document.data, name, document.content_type)
+    if document.print_in_browser:
+        result.headers = {'X-ClinReport-Print': '1'}
+    return result
 
 
 # --- Postgres ---
@@ -513,12 +542,12 @@ def send_clinbio(params: dict, caller: Caller = LOCAL) -> dict:
         raise ClientError('Отправка в CLINBIO работает только при входе в OpenCRAVAT через Keycloak.')
     if not clinbio_configured(caller):
         raise ClientError('Отправка в CLINBIO не настроена на сервере (переменные CLINBIO_*).')
-    if params.get('kind') == '10x':
-        raise ClientError('В CLINBIO отправляется заключение, а не технический документ LPWGS.')
+    if params.get('kind') not in (None, 'default'):
+        raise ClientError('В CLINBIO отправляется заключение, а не технический документ LPWGS или отчёт скрининга.')
     sample = str(params.get('sample') or '').strip()
     if not sample:
         raise ClientError('Не указан образец.')
-    document = render(params, caller)
+    document = render(dict(params, format='docx'), caller)  # CLINBIO takes .docx only (office checks it)
     data = {'sample': sample, 'username': caller.name, 'replace': '1' if params.get('replace') else ''}
 
     def post(token):
@@ -608,10 +637,19 @@ def check_template(params: dict, caller: Caller = LOCAL) -> dict:
 
 
 def template_file(params: dict, caller: Caller = LOCAL) -> FileResult:
+    """The template to start from: its .docx, or (HTML-only templates) its folder as a .zip."""
     template_id = str(params.get('id') or '')
     store = _store()
     item = _template_error(lambda: store.get(template_id))
-    return FileResult(store.path(template_id).read_bytes(), _safe_filename(item['title'], 'template.docx'), DOCX_MIME)
+    sources = store.sources(template_id)
+    if sources['docx']:
+        return FileResult(sources['docx'].read_bytes(), _safe_filename(item['title'], 'template.docx'), DOCX_MIME)
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for path in sorted(sources['html'].rglob('*')):
+            if path.is_file() and '__pycache__' not in path.parts:
+                archive.write(path, str(path.relative_to(sources['html'].parent)))
+    return FileResult(buffer.getvalue(), _safe_filename(item['title'], 'template', '.zip'), 'application/zip')
 
 
 def template_path(template_id: str) -> Path:

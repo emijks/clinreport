@@ -76,7 +76,7 @@ def test_process_default_builds_a_report_per_sample(service, trio_db):
     first = reports[0]['context']
     assert len(first['p_variants']) == 1 and len(first['lp_variants']) == 1 and len(first['vus_variants']) == 1
     assert reports[0]['filename'] == 'Заключение (sample1).docx'
-    assert set(result['layouts']) == {'default', '10x'}
+    assert set(result['layouts']) == {'default', '10x', 'screening'}
 
 
 def test_process_lpwgs_target_default_others_10x(service, trio_db):

@@ -1,0 +1,11 @@
+# Профилактический ДНК-скрининг — origin and licenses
+
+- **Design, texts, data (`partials/`, `style.css`, `images/`, `data/`)**: from
+  [KateAnpilogova/Secondary-findings](https://github.com/KateAnpilogova/Secondary-findings) at commit `058240c`
+  (GenLab), adapted for ClinReport: field names follow the report context of `clinreport_core/screening.py`,
+  `| safe` became the sanitising `| rich` filter, assets are embedded by the renderer.
+  The upstream validation and citation rules live in `clinreport_core/screening.py`.
+- **Fonts (`fonts/`)**: converted from OTF to WOFF2, unchanged otherwise; SIL Open Font License 1.1 (`fonts/OFL.txt`):
+  - Inter — Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)
+  - Source Serif 4 — Copyright 2014–2023 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
+    (https://github.com/adobe-fonts/source-serif)

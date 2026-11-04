@@ -6,10 +6,10 @@ from docxtpl import DocxTemplate
 
 from .database import VariantSource
 from .process import SampleProcessor
-from .templates import BUILTIN, BUILTIN_DIR, richtextify
+from .templates import BUILTIN, BUILTIN_DIR, DOCX_DIR, richtextify
 
 TEMPLATES_DIR = BUILTIN_DIR
-TEMPLATES = {tid: BUILTIN_DIR / f'{tid}.docx' for tid, _title, _kind in BUILTIN}
+TEMPLATES = {tid: DOCX_DIR / f'{tid}.docx' for tid, _title, _kind in BUILTIN if (DOCX_DIR / f'{tid}.docx').is_file()}
 DEFAULT_TEMPLATES = tuple(tid for tid, _title, kind in BUILTIN if kind == 'default')
 
 
@@ -49,10 +49,14 @@ class ClinReport:
         )
 
     def build_context(self, sample, report_type='default') -> dict:
-        """Build the template context for one sample. report_type: 'default' | '10x'."""
+        """Build the template context for one sample. report_type: 'default' | '10x' | 'screening'."""
         processor = self.processor_for(sample)
         if report_type == '10x':
             return processor.build_10x_context()
+        if report_type == 'screening':
+            from .screening import build_context
+
+            return build_context(processor)
         return processor.build_default_context()
 
     def render(self, context: dict, template='DZM') -> DocxTemplate:

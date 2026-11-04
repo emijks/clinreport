@@ -94,6 +94,55 @@ LAYOUTS = {
     ),
 }
 
+# --- «Профилактический ДНК-скрининг» (clinreport_core/screening.py) ---
+SCREENING_COMMON_FIELDS = (
+    ('patient', 'participant', 'Участник исследования (ФИО)'),
+    ('patient', 'sex', 'Пол (женский / мужской)'),
+    ('patient', 'date', 'Дата исследования'),
+    ('patient', 'mean_depth', 'Средняя глубина прочтения'),
+)
+SCREENING_LABELS = {
+    'gene': 'Ген',
+    'disease': 'Заболевание',
+    'omim': 'OMIM',
+    'position': 'Позиция (GRCh38)',
+    'hgvs_c': 'HGVS c.',
+    'hgvs_p': 'HGVS p.',
+    'classification': 'Классификация',
+    'zygosity': 'Зиготность',
+    'inheritance': 'Наследование (АД, АР, ХД, ХР, ХС)',
+    'frequency': 'Частота (gnomAD)',
+    'reads_alt': 'Прочтений альт.',
+    'reads_total': 'Прочтений всего',
+    'key': 'Ключ ([@ключ] в тексте)',
+    'text': 'Источник',
+}
+SCREENING_VARIANT_FIELDS = ('gene', 'disease', 'omim', 'position', 'hgvs_c', 'hgvs_p', 'classification', 'zygosity',
+                            'inheritance', 'frequency', 'reads_alt', 'reads_total')
+LAYOUTS['screening'] = _layout(
+    SCREENING_COMMON_FIELDS,
+    (
+        ('variants', 'Клинически значимые варианты в генах из списка ACMG', SCREENING_VARIANT_FIELDS),
+        ('references', 'Дополнительные источники литературы', ('key', 'text')),
+    ),
+    SCREENING_LABELS,
+    similar=False,
+    upload=False,
+    templates=['screening'],
+)
+# Rows the clinician may add and delete; lists of paragraphs edited one by one (the page: static/app.js).
+LAYOUTS['screening']['add_rows'] = ['variants', 'references']
+LAYOUTS['screening']['lists'] = [
+    {'key': 'interpretation', 'title': 'Интерпретация вариантов',
+     'hint': 'Абзац за абзацем. Можно <i>курсив</i>, <b>жирный</b>, <sup>верхний индекс</sup>; ссылка на источник — [@ключ].'},
+    {'key': 'recommendations', 'title': 'Рекомендации',
+     'hint': 'Пусто — в отчёт попадут стандартные рекомендации шаблона.'},
+]
+LAYOUTS['screening']['subtitle'] = 'Профилактический ДНК-скрининг: варианты с Note 1 и 2'
+for _layout_ in LAYOUTS.values():
+    _layout_.setdefault('add_rows', [])
+    _layout_.setdefault('lists', [])
+
 
 # --- Postgres ReportedVariants payload (context dict -> records) ---
 PAYLOAD_COMMON = (

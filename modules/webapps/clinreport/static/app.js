@@ -5,12 +5,19 @@
 // send the edited context back — the web version of the Tk confirmation windows.
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+// Save dialog per format (the server sends the file; a PDF made by the browser is printed instead, see printReport).
+const FILE_TYPES = {
+  docx: { description: 'Документ Word', accept: { [DOCX_MIME]: ['.docx'] }, extension: '.docx' },
+  html: { description: 'Веб-страница HTML', accept: { 'text/html': ['.html'] }, extension: '.html' },
+  pdf: { description: 'Документ PDF', accept: { 'application/pdf': ['.pdf'] }, extension: '.pdf' },
+};
+const KIND_BADGES = { '10x': 'LPWGS 10x', screening: 'скрининг' };
 
 const state = {
   source: {},        // {dbpath} or {job_id, username} as passed by the viewer widget
   dbpath: null,
   settings: {},
-  reports: [],       // [{label, kind, is_target, filename, context}]
+  reports: [],       // [{label, kind, is_target, name, filename, context, template?, format?}]
   layouts: {},
   activeTab: 0,
 };
@@ -144,7 +151,7 @@ function renderReports() {
     role: 'tab',
     'aria-selected': i === state.activeTab ? 'true' : 'false',
     onclick: () => { state.activeTab = i; renderReports(); },
-  }, report.label, report.kind === '10x' ? el('span', { className: 'badge' }, 'LPWGS 10x')
+  }, report.label, KIND_BADGES[report.kind] ? el('span', { className: 'badge' }, KIND_BADGES[report.kind])
     : (report.is_target && state.reports.length > 1 ? el('span', { className: 'badge' }, 'целевой') : null)));
   $('tabs').replaceChildren(...tabs);
   $('panels').replaceChildren(renderPanel(state.reports[state.activeTab]));
@@ -176,18 +183,29 @@ function renderPanel(report) {
   const context = report.context;
 
   // actions row
-  // layout.templates: [{id, title}] (built-in + the lab's own); template_default: the user's choice
+  // layout.templates: [{id, title, formats}] (built-in + the lab's own); template_default: the user's choice.
+  // A template makes the formats it has files for (docx, html, pdf); the format choice follows the template.
+  const ids = layout.templates.map((t) => t.id);
+  if (!ids.includes(report.template)) report.template = ids.includes(layout.template_default) ? layout.template_default : ids[0];
   const templateSelect = layout.templates.length > 1
     ? el('select', { 'aria-label': 'Шаблон' }, layout.templates.map((t) => el('option', { value: t.id }, t.title)))
     : null;
-  if (templateSelect) {
-    const ids = layout.templates.map((t) => t.id);
-    templateSelect.value = ids.includes(report.template) ? report.template : layout.template_default;
-  }
-  if (templateSelect) templateSelect.addEventListener('change', () => { report.template = templateSelect.value; });
+  if (templateSelect) templateSelect.value = report.template;
+  const formatSelect = el('select', { 'aria-label': 'Формат' });
+  const formatsOf = () => (layout.templates.find((t) => t.id === report.template) || { formats: ['docx'] }).formats;
+  const fillFormats = () => {
+    const formats = formatsOf();
+    formatSelect.replaceChildren(...formats.map((f) => el('option', { value: f }, (layout.format_labels || {})[f] || f.toUpperCase())));
+    if (!formats.includes(report.format)) report.format = formats[0];
+    formatSelect.value = report.format;
+    formatSelect.disabled = formats.length < 2;
+  };
+  fillFormats();
+  if (templateSelect) templateSelect.addEventListener('change', () => { report.template = templateSelect.value; fillFormats(); });
+  formatSelect.addEventListener('change', () => { report.format = formatSelect.value; });
 
   const saveBtn = el('button', { type: 'button', className: 'btn primary' }, 'Сохранить как…');
-  saveBtn.addEventListener('click', () => busy(saveBtn, () => saveReport(report, templateSelect)));
+  saveBtn.addEventListener('click', () => busy(saveBtn, () => saveReport(report, layout)));
   const uploadBtn = layout.upload
     ? el('button', { type: 'button', className: 'btn', disabled: !state.settings.db_configured,
       title: state.settings.db_configured ? null : 'База данных не подключена на сервере' }, 'Выгрузить в базу')
@@ -197,13 +215,15 @@ function renderPanel(report) {
     ? el('button', { type: 'button', className: 'btn', title: 'Заключение уйдёт в CLINBIO (office) и оттуда в лабораторию' },
       'Отправить в CLINBIO')
     : null;
-  if (clinbioBtn) clinbioBtn.addEventListener('click', () => busy(clinbioBtn, () => sendClinbio(report, templateSelect)));
+  if (clinbioBtn) clinbioBtn.addEventListener('click', () => busy(clinbioBtn, () => sendClinbio(report)));
 
   const actions = el('div', { className: 'row panel-actions' },
     templateSelect ? el('label', { className: 'field-inline' }, 'Шаблон', templateSelect) : null,
+    el('label', { className: 'field-inline' }, 'Формат', formatSelect),
     saveBtn, uploadBtn, clinbioBtn,
     el('span', { className: 'spacer' }),
-    el('span', { className: 'muted' }, report.kind === '10x' ? 'Технический документ LPWGS (10x)' : `Дата заключения: ${context.report_date || ''}`),
+    el('span', { className: 'muted' }, layout.subtitle
+      || (report.kind === '10x' ? 'Технический документ LPWGS (10x)' : `Дата заключения: ${context.report_date || ''}`)),
   );
 
   // patient / tech fields
@@ -214,35 +234,58 @@ function renderPanel(report) {
     return el('label', { className: 'field' }, f.label, input);
   }));
 
-  // variant tables
+  // variant tables (layout.add_rows: the clinician may add and delete rows of these)
   const sections = layout.tables.map((table) => {
-    const rows = context[table.key] || [];
+    if (!context[table.key]) context[table.key] = [];
+    const rows = context[table.key];
+    const editable = (layout.add_rows || []).includes(table.key);
+    const addBtn = editable ? el('button', { type: 'button', className: 'btn small', onclick: () => {
+      rows.push(Object.fromEntries(table.columns.map((c) => [c.field, ''])));
+      renderReports();
+    } }, 'Добавить строку') : null;
     const head = el('div', { className: 'section-head' }, el('h3', {}, table.title),
-      el('span', { className: 'count' }, rows.length ? `${rows.length}` : ''));
-    if (!rows.length) return el('div', { className: 'section' }, head, el('p', { className: 'empty' }, 'Нет вариантов'));
+      el('span', { className: 'count' }, rows.length ? `${rows.length}` : ''), addBtn);
+    if (!rows.length) return el('div', { className: 'section' }, head, el('p', { className: 'empty' }, editable ? 'Пусто' : 'Нет вариантов'));
 
-    const header = el('tr', {}, table.columns.map((c) => el('th', {}, c.label)), layout.similar ? el('th', {}) : null);
-    const body = rows.map((row) => el('tr', {},
+    const header = el('tr', {}, table.columns.map((c) => el('th', {}, c.label)), layout.similar || editable ? el('th', {}) : null);
+    const body = rows.map((row, i) => el('tr', {},
       table.columns.map((c) => el('td', { className: `col-${c.field}` },
         editableArea(row[c.field], (v) => { row[c.field] = v; }))),
       layout.similar ? el('td', { className: 'actions' }, similarButton(row)) : null,
+      editable ? el('td', { className: 'actions' }, removeButton(() => { rows.splice(i, 1); renderReports(); })) : null,
     ));
     return el('div', { className: 'section' }, head,
       el('div', { className: 'table-wrap' }, el('table', { className: 'variants' }, el('thead', {}, header), el('tbody', {}, body))));
   });
 
-  return el('div', { className: 'panel', role: 'tabpanel' }, actions, common, sections);
+  // paragraph lists (layout.lists): interpretation, recommendations — one text area per paragraph
+  const lists = (layout.lists || []).map((list) => {
+    if (!context[list.key]) context[list.key] = [];
+    const items = context[list.key];
+    const addBtn = el('button', { type: 'button', className: 'btn small', onclick: () => { items.push(''); renderReports(); } }, 'Добавить абзац');
+    return el('div', { className: 'section' },
+      el('div', { className: 'section-head' }, el('h3', {}, list.title), el('span', { className: 'count' }, items.length ? `${items.length}` : ''), addBtn),
+      list.hint ? el('p', { className: 'hint' }, list.hint) : null,
+      items.length ? el('div', { className: 'paragraphs' }, items.map((text, i) => el('div', { className: 'paragraph-row' },
+        editableArea(text, (v) => { items[i] = v; }, 'paragraph'),
+        removeButton(() => { items.splice(i, 1); renderReports(); }))))
+        : el('p', { className: 'empty' }, 'Пусто'));
+  });
+
+  return el('div', { className: 'panel', role: 'tabpanel' }, actions, common, sections, lists);
+}
+
+function removeButton(onRemove) {
+  return el('button', { type: 'button', className: 'btn small ghost', title: 'Удалить', 'aria-label': 'Удалить', onclick: onRemove }, '×');
 }
 
 // --- save / upload / similar ---
 
-async function pickSaveTarget(filename) {
+async function pickSaveTarget(filename, format = 'docx') {
   if (!window.showSaveFilePicker) return null;
+  const { description, accept } = FILE_TYPES[format];
   try {
-    return await window.showSaveFilePicker({
-      suggestedName: filename,
-      types: [{ description: 'Документ Word', accept: { [DOCX_MIME]: ['.docx'] } }],
-    });
+    return await window.showSaveFilePicker({ suggestedName: filename, types: [{ description, accept }] });
   } catch (e) {
     if (e.name === 'AbortError') throw e;
     return null;  // picker unavailable (e.g. not a secure context): fall back to a download
@@ -258,33 +301,60 @@ function downloadBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-async function saveReport(report, templateSelect) {
+function reportFilename(report) {
+  const base = report.name || report.filename.replace(/\.docx$/i, '');
+  return base + FILE_TYPES[report.format || 'docx'].extension;
+}
+
+function renderPayload(report, filename) {
+  return { context: report.context, kind: report.kind, template: report.template || null, format: report.format || 'docx', filename };
+}
+
+async function saveReport(report, layout) {
+  const format = report.format || 'docx';
+  if (format === 'pdf' && layout.pdf_mode === 'browser') {
+    await printReport(report);
+    return;
+  }
+  const filename = reportFilename(report);
   let handle;
   try {
-    handle = await pickSaveTarget(report.filename);  // ask first, while the click still counts as a user gesture
+    handle = await pickSaveTarget(filename, format);  // ask first, while the click still counts as a user gesture
   } catch (e) {
     return;  // user cancelled
   }
-  const blob = await postBlob('render', {
-    context: report.context,
-    kind: report.kind,
-    template: templateSelect ? templateSelect.value : null,
-    filename: handle ? handle.name : report.filename,
-  });
+  const blob = await postBlob('render', renderPayload(report, handle ? handle.name : filename));
   if (handle) {
     const writable = await handle.createWritable();
     await writable.write(blob);
     await writable.close();
   } else {
-    downloadBlob(blob, report.filename);
+    downloadBlob(blob, filename);
   }
-  const name = handle ? handle.name : report.filename;
+  const name = handle ? handle.name : filename;
   if (report.kind === 'default' && state.settings.auto_upload && state.settings.db_configured) {
     const inserted = await uploadReport(report, { quiet: true });
     notify('ok', inserted === null ? `Документ сохранён: ${name}` : `Документ сохранён (${name}) и данные выгружены в БД`);
   } else {
     notify('ok', `Документ сохранён: ${name}`);
   }
+}
+
+// No PDF engine on this computer (the macOS desktop app): the server sends the report as HTML with Paged.js, which lays
+// it out into pages in a new tab and opens the print dialog; the user picks «Сохранить как PDF».
+async function printReport(report) {
+  const tab = window.open('', '_blank');  // now, while the click still counts: a window opened later is blocked
+  if (tab) tab.document.write('<p style="font:16px sans-serif;padding:24px">Готовлю отчёт к печати…</p>');
+  try {
+    const response = await request('POST', 'render', renderPayload(report, reportFilename(report)));
+    const url = URL.createObjectURL(await response.blob());
+    if (tab) tab.location = url; else window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 120000);
+  } catch (error) {
+    if (tab) tab.close();
+    throw error;
+  }
+  notify('ok', 'Отчёт открыт в новой вкладке: в окне печати выберите «Сохранить как PDF».', { sticky: true });
 }
 
 async function uploadReport(report, { quiet = false } = {}) {
@@ -298,15 +368,10 @@ async function uploadReport(report, { quiet = false } = {}) {
 }
 
 // CLINBIO: office checks the sample is assigned to the logged-in clinician and emails the conclusion on.
-async function sendClinbio(report, templateSelect) {
+async function sendClinbio(report) {
   if (!confirm(`Отправить заключение по образцу ${report.label} в CLINBIO?\nОно будет передано в лабораторию.`)) return;
-  const payload = {
-    context: report.context,
-    kind: report.kind,
-    template: templateSelect ? templateSelect.value : null,
-    filename: report.filename,
-    sample: report.label,
-  };
+  // CLINBIO takes Word: the chosen template, always as .docx
+  const payload = { ...renderPayload(report, (report.name || report.label) + '.docx'), format: 'docx', sample: report.label };
   let result = await postJSON('send_clinbio', payload);
   if (result.already_sent) {
     if (!confirm(result.message)) return;
@@ -445,6 +510,7 @@ function renderTemplates() {
       el('div', { className: 'tpl-meta' },
         el('span', { className: t.builtin ? 'chip plain' : 'chip info' }, t.builtin ? 'встроенный' : 'свой'),
         el('span', {}, listing.kinds[t.kind] || t.kind),
+        el('span', { className: 'muted' }, (t.formats || ['docx']).map((f) => f.toUpperCase()).join(' · ')),
         t.added ? el('span', {}, `добавлен ${new Date(t.added).toLocaleDateString('ru-RU')}`) : null,
         checkSummary(t.check)),
       tplState.open.has(t.id) ? checkDetails(t.check) : null);
@@ -454,7 +520,7 @@ function renderTemplates() {
 // New templates show up in the open reports' template choice without re-processing.
 function refreshTemplateChoices(templates) {
   for (const [kind, lay] of Object.entries(state.layouts)) {
-    lay.templates = templates.filter((t) => t.kind === kind).map((t) => ({ id: t.id, title: t.title }));
+    lay.templates = templates.filter((t) => t.kind === kind).map((t) => ({ id: t.id, title: t.title, formats: t.formats || ['docx'] }));
   }
   if (state.reports.length) renderReports();
 }
@@ -510,6 +576,7 @@ function init() {
 
   $('process-btn').addEventListener('click', (e) => busy(e.currentTarget, () => processResult('default')));
   $('process-lpwgs-btn').addEventListener('click', (e) => busy(e.currentTarget, () => processResult('lpwgs')));
+  $('process-screening-btn').addEventListener('click', (e) => busy(e.currentTarget, () => processResult('screening')));
   $('settings-btn').addEventListener('click', () => openSettings().catch(showError));
   $('templates-btn').addEventListener('click', () => openTemplates().catch(showError));
   $('templates-close').addEventListener('click', () => $('templates-dialog').close());

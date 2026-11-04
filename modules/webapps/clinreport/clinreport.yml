@@ -19,7 +19,7 @@ release_note:
   3.0.0: Part of ClinReport 3.0.0; the module version now follows the product version.
   3.0.2: Reads the Note column of OpenCRAVAT 2.3.1 and newer (base__note_variant); a missing package no longer stops
     the OpenCRAVAT GUI.
-  3.1.0: Part of ClinReport 3.1.0 (unchanged).
+  3.1.0: Reports in PDF and HTML as well as Word («Формат»); the report «Профилактический ДНК-скрининг» (Notes 1 and 2).
 tags:
 - reporters
 - clinical relevance
