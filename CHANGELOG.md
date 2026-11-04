@@ -3,6 +3,31 @@
 All notable changes to ClinReport. Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/). The section of a version is used as its GitHub release notes.
 
+## [Unreleased]
+
+### Added
+
+- **Linux desktop app** (Debian 13, Ubuntu 24.04+, Fedora 40+; x86-64): `ClinReport-<version>-linux-x64.tar.gz`, the
+  same window and OpenCRAVAT as on Windows and macOS, drawn by the desktop's own WebKitGTK. `tar xzf …` and
+  `./ClinReport/clinreport --install` put it into the applications menu; no administrator rights, nothing else to install.
+- **Everything in one folder on Linux**: program, data, cache and temporary files live in `~/.local/share/clinreport`;
+  outside it only the menu entry and the `clinreport` command (and the autostart entry while it is on). WebKit's and
+  pip's caches and temporary files no longer end up in `~/.cache` or `/tmp`; the browser and the file manager that
+  ClinReport opens keep using their own folders.
+- **Removing ClinReport on Linux**: Настройки → «Место на диске» shows what the program, the cache and your data take,
+  clears the cache and «Удалить ClinReport…» (optionally with the data); or `clinreport --uninstall [--purge]`. After a
+  purge nothing of ClinReport is left on the computer (CI checks this on every push).
+- **In-app update on Linux**, as on Windows: «обновить до X» downloads the new archive, checks it, closes ClinReport,
+  swaps the program and starts the new version; the data stays.
+- Without WebKitGTK the Linux app says which package to install and runs OpenCRAVAT in the browser meanwhile.
+
+### Fixed
+
+- `--headless` stopped by `--quit` could exit before OpenCRAVAT's worker processes were gone (the next start or `--quit`
+  had to stop them).
+- Work folders of module installs («Окружения», modules from a .zip) are kept in the data folder's `tmp/`, emptied at
+  start, so an interrupted install no longer leaves `clinreport-install-*` / `clinreport-zip-*` folders behind.
+
 ## [3.0.2] - 2026-10-22
 
 3.0.1 was never released; its changes ship here.
