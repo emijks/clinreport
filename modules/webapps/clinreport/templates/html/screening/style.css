@@ -247,3 +247,25 @@ ol.refs { padding-left: 0; list-style: none; counter-reset: ref; font-size: 9.5p
 ol.refs li { counter-increment: ref; margin-bottom: 3.2mm; overflow-wrap: anywhere; }
 ol.refs li::before { content: counter(ref) ". "; }
 .nowrap { white-space: nowrap; }
+
+/* ---------- на экране: документ в браузере ----------
+   Страницы, колонтитулы и номера — только в PDF и при печати. В браузере отчет — одна колонка шириной с лист A4
+   и теми же полями, на светлом фоне, без разрывов страниц. */
+@media screen {
+  html { background: #eef0f3; }
+  body {
+    max-width: 210mm;
+    margin: 0 auto;
+    padding: 0 18mm 24mm;
+    box-sizing: border-box;
+    min-height: 100vh;
+    background: #fff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .04), 0 2px 12px rgba(0, 0, 0, .08);
+  }
+  section + section { margin-top: 16mm; }        /* вместо разрыва страницы */
+  section.cover { margin: 0 -18mm; }              /* шапка обложки — во всю ширину колонки */
+  .cover-header { width: 100%; margin: 0; }
+  .results-title { margin-top: 0; }               /* на листе заголовок поднят к колонтитулу */
+  .toc-list a::after { content: none; }           /* номера страниц есть только на листах */
+  .fnote { margin-top: 6mm; }                     /* сноска — под текстом, а не внизу листа */
+}

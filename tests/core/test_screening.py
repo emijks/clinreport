@@ -170,11 +170,8 @@ def test_html_is_one_file_with_nothing_outside(engine):
     page = output.render(example(), 'screening', SOURCES, 'html').data.decode('utf-8')
     page = html.unescape(page)  # the CSP's quotes are written as &#39; in the attribute; browsers read them back
     assert 'Петрова Анна Сергеевна' in page and '<i>HFE</i>' in page
-    scripts = re.findall(r'<script>(.*?)</script>', page, flags=re.S)
-    assert len(scripts) == 2 and 'PagedConfig' in scripts[0] and 'window.print' not in page, 'opened: pages, no printing'
-    csp = re.search(r'Content-Security-Policy" content="([^"]+)"', page).group(1)
-    assert all(output._sha256(script) in csp for script in scripts), 'exactly these scripts may run'
-    assert 'pagedjs_page' in scripts[0] and 'max-width: none' in scripts[0], 'PDF-viewer look and the margin-box fix'
+    assert '<script' not in page and "script-src 'none'" in page, 'a document, not a program'
+    assert '@media screen' in page, 'the template says how it looks in a browser (a column, no pages)'
     markup = re.sub(r'<script>.*?</script>', '', page, flags=re.S)  # Paged.js's own code mentions url( and src=
     assert not re.search(r'(src|href)="(?!data:|#)', markup), 'every image/link is embedded or in-page'
     assert not re.search(r'url\((?!"?data:)', markup), 'every CSS url() is embedded'
@@ -188,7 +185,7 @@ def test_pdf_in_the_browser_prints_with_pagedjs(engine):
     page = document.data.decode('utf-8')
     scripts = re.findall(r'<script>(.*?)</script>', page, flags=re.S)
     assert len(scripts) == 2 and 'window.print()' in scripts[0] and 'Paged' in scripts[1]
-    assert 'max-width: none' in scripts[0] and 'background: #525659' not in scripts[0], 'the fix, not the viewer look'
+    assert 'max-width: none' in scripts[0], 'Paged.js margin-box fix'
     csp = html.unescape(re.search(r'Content-Security-Policy" content="([^"]+)"', page).group(1))
     for script in scripts:  # the page's own Content-Security-Policy allows exactly these two scripts
         assert output._sha256(script) in csp

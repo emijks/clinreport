@@ -112,6 +112,9 @@ fails on unknown fields), `ruff check .`, the PDF looked at (WeasyPrint) and the
 - **No new tabs for printing**: Safari blocks a window opened after an `await` (the report check, the request), so the
   browser PDF is laid out and printed in a hidden, off-screen iframe (`printReport`; `display:none` would leave Paged.js
   nothing to measure). The save picker after the «Сохранить с «_»» click still counts as the user's gesture.
+- **Paged.js lays out on screen**: a template's `@media screen` block (its look as an HTML file) would shape the
+  browser PDF's pages too — `html_document(mode='print')` turns `@media screen` off. It also drops a negative
+  `margin-top` at the top of a page (WeasyPrint keeps it): small offsets there are expected.
 - **Paged.js rewrites every stylesheet present when it starts** (styles added before are lost or altered): styles for
   its output go in through `PagedConfig.after` (`output._paged_config`). It also applies a margin box's `width` twice
   (column and box, as `width` + `max-width`): `PAGEDJS_FIX_CSS` resets them, or `@top-right { width: 25% }` shrinks.

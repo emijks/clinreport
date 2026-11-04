@@ -39,9 +39,11 @@ context (from the page) ──► output.namespace_for(kind)   screening: screen
                               CSP, no outside references)
 ```
 
-HTML modes (`output.html_document(mode=…)`): `pdf` — what WeasyPrint reads, no script; `file` — the HTML download,
-Paged.js lays the pages out and `PREVIEW_CSS` shows them like a PDF viewer; `print` — the browser PDF, then the print
-dialog. Both browser modes add `PAGEDJS_FIX_CSS` after the layout (see the pitfalls in AGENTS.md).
+HTML modes (`output.html_document(mode=…)`): `static` — no script: the HTML download and what WeasyPrint reads;
+`print` — the browser PDF: Paged.js lays out the pages (`PAGEDJS_FIX_CSS` after it), then the print dialog. The
+template decides how its HTML file looks in a browser with an `@media screen` block (screening: one A4-wide column on a
+light background, no pages, no headers or page numbers); WeasyPrint reads print media, and the `print` mode switches
+`@media screen` off, because Paged.js lays out on screen.
 
 **PDF engines** (`pdf_engine()`, decided once per process; the page learns it as `layouts[kind].pdf_mode`):
 

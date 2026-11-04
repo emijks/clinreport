@@ -44,15 +44,6 @@ PAGEDJS_FIX_CSS = (
     ' .pagedjs_margin-bottom-left, .pagedjs_margin-bottom-center, .pagedjs_margin-bottom-right'
     ' { width: auto !important; max-width: none !important; }'
 )
-# An opened .html file shows its pages like a PDF viewer: Paged.js lays them out, then these rules centre them on a
-# grey background (screen only: printing and WeasyPrint never see them).
-PREVIEW_CSS = (
-    '@media screen {'
-    ' html, body { margin: 0; background: #525659; }'
-    ' .pagedjs_pages { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 24px 0 48px; }'
-    ' .pagedjs_page { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.3), 0 6px 24px rgba(0,0,0,.25); } }'
-)
-
 
 def _paged_config(css: str, then: str = '') -> str:
     """window.PagedConfig: when Paged.js has laid out the pages, add `css` (added any earlier, Paged.js would rewrite
@@ -61,10 +52,9 @@ def _paged_config(css: str, then: str = '') -> str:
             f' s.textContent = {json.dumps(css)}; document.head.appendChild(s); {then}}}}};')
 
 
-PREVIEW_SCRIPT = _paged_config(PAGEDJS_FIX_CSS + ' ' + PREVIEW_CSS)
 PRINT_SCRIPT = _paged_config(PAGEDJS_FIX_CSS, 'setTimeout(function () { window.print(); }, 300); ')
 WEASYPRINT_TIMEOUT = 180
-HTML_MODES = ('pdf', 'file', 'print')
+HTML_MODES = ('static', 'print')
 
 
 class Document:
@@ -130,19 +120,22 @@ def jinja_environment(template_dir: Path, undefined=None):
     return env
 
 
-def html_document(namespace: dict, template_dir: Path, *, mode: str = 'pdf', undefined=None) -> str:
+def html_document(namespace: dict, template_dir: Path, *, mode: str = 'static', undefined=None) -> str:
     """template.html of template_dir rendered with namespace.
 
-    mode 'pdf':   as WeasyPrint reads it — no script;
-         'file':  the HTML download — Paged.js lays the pages out on screen, centred like a PDF viewer (PREVIEW_CSS);
-         'print': the browser PDF — the same, then the print dialog (PRINT_SCRIPT).
+    mode 'static': no script — the HTML download (the template's `@media screen` rules make it a document in the
+                   browser) and what WeasyPrint reads (print media: pages, headers, numbers);
+         'print':  the browser PDF — Paged.js lays out the print pages, then the print dialog (PRINT_SCRIPT).
     """
     if mode not in HTML_MODES:
         raise ValueError(f'unknown mode {mode}')
-    scripts = {'pdf': [], 'file': [PREVIEW_SCRIPT, PAGEDJS.read_text(encoding='utf-8')],
-               'print': [PRINT_SCRIPT, PAGEDJS.read_text(encoding='utf-8')]}[mode]
+    scripts = [PRINT_SCRIPT, PAGEDJS.read_text(encoding='utf-8')] if mode == 'print' else []
     csp = CSP_STATIC + "; script-src " + (' '.join(f"'sha256-{_sha256(s)}'" for s in scripts) or "'none'")
     page = jinja_environment(template_dir, undefined).get_template('template.html').render(dict(namespace, csp=csp))
+    if mode == 'print':
+        # Paged.js lays the pages out on screen, so the template's screen look (the HTML file's column) would apply
+        # to the pages too; only print rules may shape them, as in WeasyPrint.
+        page = re.sub(r'@media\s+screen\b', '@media not all', page)
     if scripts:
         tags = ''.join(f'<script>{s}</script>\n' for s in scripts)
         page = page.replace('</head>', tags + '</head>', 1) if '</head>' in page else tags + page
@@ -283,7 +276,7 @@ def render(context: dict, kind: str, sources: dict, fmt: str) -> Document:
         return Document(docx_document(richtextify(context), sources['docx']), fmt)
     namespace = namespace_for(kind, context)
     if fmt == 'html':
-        return Document(html_document(namespace, sources['html'], mode='file').encode('utf-8'), fmt)
+        return Document(html_document(namespace, sources['html']).encode('utf-8'), fmt)
     if pdf_engine() == 'browser':
         return Document(html_document(namespace, sources['html'], mode='print').encode('utf-8'), fmt, print_in_browser=True)
     return Document(html_to_pdf(html_document(namespace, sources['html'])), fmt)
