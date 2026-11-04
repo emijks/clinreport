@@ -490,15 +490,15 @@ def quit_running(timeout=15) -> int:
     (its OpenCRAVAT goes with it), end it if it hangs, then stop any OpenCRAVAT process it left behind."""
     import psutil
 
-    from .server import _kill_tree, kill_leftovers
+    from .server import _kill_tree, kill_leftovers, wait_gone
 
     pid = instance.running_pid()
     if pid and instance.hand_over(action='quit'):
         try:
-            psutil.Process(pid).wait(timeout)
-        except psutil.TimeoutExpired:
-            log.warning('launcher %s did not close in %s s; ending it', pid, timeout)
-            _kill_tree(psutil.Process(pid))
+            _gone, alive = wait_gone([psutil.Process(pid)], timeout)
+            if alive:
+                log.warning('launcher %s did not close in %s s; ending it', pid, timeout)
+                _kill_tree(alive[0])
         except psutil.NoSuchProcess:
             pass
     kill_leftovers()

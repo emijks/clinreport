@@ -92,9 +92,10 @@ english.StillRunning=ClinReport could not be closed. Close the ClinReport window
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [InstallDelete]
-; A clean python/ and modules/ on every update: packages removed from the bundle must not linger.
+; A clean python/, modules/ and weasyprint/ on every update: files removed from the bundle must not linger.
 Type: filesandordirs; Name: "{app}\python"
 Type: filesandordirs; Name: "{app}\modules"
+Type: filesandordirs; Name: "{app}\weasyprint"
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs

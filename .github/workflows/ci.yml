@@ -53,9 +53,13 @@ jobs:
             requirements-dev.txt
             packaging/requirements.txt
       # PyGObject (the Linux window, packaging/requirements.txt) has no Linux wheels: pip builds it.
-      - name: Build dependencies of PyGObject
+      # Pango for WeasyPrint (PDFs of the HTML templates): desktops have it, a bare runner may not.
+      - name: Build dependencies of PyGObject, Pango
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libgirepository-2.0-dev libcairo2-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libgirepository-2.0-dev libcairo2-dev \
+            libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0
       - run: pip install -r requirements-dev.txt
       # Tests that need the example results (patient data, never in the repository) are skipped here.
       # Coverage is reported, not enforced yet (pyproject.toml fail_under is the target).
@@ -108,7 +112,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends pkg-config libgirepository-2.0-dev libcairo2-dev \
-            gir1.2-gtk-3.0 gir1.2-webkit2-4.1 xvfb xauth
+            gir1.2-gtk-3.0 gir1.2-webkit2-4.1 libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 xvfb xauth
           echo "WINDOW=xvfb-run -a" >> "$GITHUB_ENV"
       - name: Version
         run: |
@@ -146,6 +150,11 @@ jobs:
           cat "$RUNNER_TEMP/selftest.json"
           cat "$CLINREPORT_DATA_DIR"/logs/sessions/*.log || true
           "$PY" -I -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1], encoding='utf-8'))['ok'] else 1)" "$RUNNER_TEMP/selftest.json"
+      # The PDF engine each platform promises (bundle.json "pdf"): WeasyPrint on Windows (bundled .exe) and Linux,
+      # the browser with Paged.js on macOS; renders the example screening report.
+      - name: PDF engine
+        run: |
+          "$PY" -I packaging/check_pdf.py packaging/dist/ClinReport "$RUNNER_TEMP/pdf-check"
       # Linux: everything ClinReport writes must be in its data folder — install, open the window, purge, and the
       # throw-away home must be empty again (docs/decisions/0016-linux-desktop.md).
       - name: Install, self-test, uninstall (Linux)

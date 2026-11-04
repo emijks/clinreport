@@ -30,6 +30,7 @@ import tarfile
 import time
 import tomllib
 import urllib.request
+import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -302,6 +303,8 @@ def build(out: Path, version: str) -> Path:
                 'update_repo': STACK.get('update_repo', ''),
                 'modules_ref': modules_ref,
                 'managed': managed,
+                # PDF engine of the HTML templates: the weasyprint package (Linux), weasyprint/ (Windows), the browser (macOS)
+                'pdf': {'win32': 'weasyprint.exe', 'darwin': 'browser'}.get(sys.platform, 'weasyprint'),
             },
             indent=2,
         ),
@@ -309,12 +312,43 @@ def build(out: Path, version: str) -> Path:
     )
     if sys.platform == 'win32':
         shutil.copy2(HERE / 'windows' / 'clinreport.ico', app / 'clinreport.ico')
+        add_weasyprint_windows(app, out.parent / '.cache')
     if sys.platform == 'darwin':
         verify_macos_minimum(app)
     if sys.platform.startswith('linux'):
         write_linux_start(app)
     print(f'built {app}')
     return app
+
+
+def add_weasyprint_windows(app: Path, cache: Path):
+    """WeasyPrint's official Windows build (stack.toml [weasyprint_windows], checksum-verified) → <app>/weasyprint/."""
+    pin = STACK['weasyprint_windows']
+    archive = cache / f"weasyprint-{pin['version']}-windows-onedir.zip"
+    if not archive.exists():
+        print(f'downloading WeasyPrint {pin["version"]} for Windows')
+        cache.mkdir(parents=True, exist_ok=True)
+        archive.write_bytes(get(pin['url']))
+    actual = hashlib.sha256(archive.read_bytes()).hexdigest()
+    if actual != pin['sha256']:
+        archive.unlink()
+        sys.exit(f'checksum mismatch for {archive.name}: expected {pin["sha256"]}, got {actual}')
+    target = app / 'weasyprint'
+    with zipfile.ZipFile(archive) as zf:
+        for member in zf.infolist():
+            name = member.filename
+            if name == 'LICENSE':
+                (target / 'LICENSE').parent.mkdir(parents=True, exist_ok=True)
+                (target / 'LICENSE').write_bytes(zf.read(member))
+            elif name.startswith('onedir/weasyprint/') and not member.is_dir():
+                path = target / name.removeprefix('onedir/weasyprint/')
+                if target.resolve() not in path.resolve().parents:
+                    sys.exit(f'{archive.name}: unexpected path {name}')
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(zf.read(member))
+    if not (target / 'weasyprint.exe').is_file():
+        sys.exit(f'{archive.name}: no onedir/weasyprint/weasyprint.exe')
+    print(f'WeasyPrint {pin["version"]} → {target}')
 
 
 # --- packaging ---

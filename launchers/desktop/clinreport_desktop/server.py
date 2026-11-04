@@ -273,7 +273,19 @@ def server_env(conf_path: Path) -> dict:
             'CLINREPORT_EDITION': 'desktop',
         }
     )
+    weasyprint = weasyprint_exe()
+    if weasyprint:  # Windows: PDFs of the HTML templates (clinreport_core/output.py, pdf_engine)
+        env['CLINREPORT_WEASYPRINT'] = str(weasyprint)
     return env
+
+
+def weasyprint_exe():
+    """WeasyPrint's Windows build in the bundle (packaging/build.py add_weasyprint_windows), or None."""
+    try:
+        exe = paths.bundle_dir() / 'weasyprint' / 'weasyprint.exe'
+    except SystemExit:  # no bundle (development)
+        return None
+    return exe if exe.is_file() else None
 
 
 def port_free(port: int) -> bool:
@@ -306,12 +318,42 @@ def _kill_tree(proc):
             p.terminate()
         except psutil.Error:
             pass
-    _gone, alive = psutil.wait_procs(family, timeout=5)
+    _gone, alive = wait_gone(family, timeout=5)
     for p in alive:
         try:
             p.kill()
         except psutil.Error:
             pass
+    wait_gone(alive, timeout=3)
+
+
+def wait_gone(procs, timeout):
+    """psutil.wait_procs that survives Linux's pidfd_open() EINVAL: psutil 7.2.2 waits through pidfd_open, which fails
+    for a process whose main thread has exited while other threads still run (OpenCRAVAT's, right after terminate()).
+    Then poll instead. Returns (gone, alive)."""
+    import psutil
+
+    procs = list(procs)
+    try:
+        return psutil.wait_procs(procs, timeout=timeout)
+    except OSError as e:
+        log.debug('wait_procs failed (%s); polling', e)
+    deadline = time.monotonic() + timeout
+    alive = procs
+    while True:
+        alive = [p for p in alive if _running(p)]
+        if not alive or time.monotonic() >= deadline:
+            return [p for p in procs if p not in alive], alive
+        time.sleep(0.1)
+
+
+def _running(proc) -> bool:
+    import psutil
+
+    try:
+        return proc.is_running() and proc.status() != psutil.STATUS_ZOMBIE
+    except psutil.Error:
+        return False
 
 
 # --- versions / module status (no cravat import) ---
@@ -496,7 +538,10 @@ class Server:
             if self.state in ('stopped', 'stopping'):
                 return
             self._set('stopping')
-        self._terminate()
+        try:
+            self._terminate()
+        except Exception:  # noqa: BLE001 - never stay «stopping»: the window and --headless wait for «stopped»
+            log.exception('stopping OpenCRAVAT failed')
         self.started_at = None
         log.info('OpenCRAVAT stopped')
         self._set('stopped')

@@ -18,3 +18,11 @@ update_repo = "emijks/clinreport"
 [macos_minimum]
 x64 = "10.15"
 arm64 = "11.0"
+
+# Windows: WeasyPrint's official standalone build (Pango included) makes the PDFs of the HTML templates; build.py puts
+# onedir/weasyprint/ into <bundle>/weasyprint/ and the launcher points CLINREPORT_WEASYPRINT at it. Same release as
+# packaging/requirements.txt `weasyprint==` (Linux, server), so every PDF comes from one engine (tested).
+[weasyprint_windows]
+version = "70.0"
+url = "https://github.com/Kozea/WeasyPrint/releases/download/v70.0/weasyprint-windows-onedir.zip"
+sha256 = "ab1151f210b4e6bb7aa7a79e91a67e8ddb760094c107bfda55241b6aaefe7d53"

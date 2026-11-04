@@ -165,3 +165,34 @@ def test_linux_gui_stack_is_pinned():
     requirements = (ROOT / 'packaging' / 'requirements.txt').read_text(encoding='utf-8')
     assert 'PyGObject==' in requirements and 'pycairo==' in requirements
     assert all('sys_platform == "linux"' in line for line in requirements.splitlines() if line.startswith(('PyGObject', 'pycairo')))
+
+
+def test_weasyprint_is_one_release_everywhere(build):
+    """Server/Linux (pip) and the Windows build (stack.toml) make every PDF with the same WeasyPrint."""
+    import re
+
+    pinned = re.search(r'^weasyprint==(\S+);', (ROOT / 'packaging' / 'requirements.txt').read_text(encoding='utf-8'), re.M)
+    win = build.STACK['weasyprint_windows']
+    assert pinned and pinned.group(1) == win['version'] and f"/v{win['version']}/" in win['url']
+
+
+def test_weasyprint_windows_is_unpacked_into_the_bundle(build, tmp_path, monkeypatch):
+    import hashlib
+    import zipfile
+
+    archive = tmp_path / 'cache' / 'weasyprint-70.0-windows-onedir.zip'
+    archive.parent.mkdir()
+    with zipfile.ZipFile(archive, 'w') as zf:
+        zf.writestr('LICENSE', 'BSD')
+        zf.writestr('README.rst', 'x')
+        zf.writestr('onedir/weasyprint/weasyprint.exe', b'MZ')
+        zf.writestr('onedir/weasyprint/_internal/pango.dll', b'MZ')
+    pin = {'version': '70.0', 'url': 'https://example.invalid/w.zip', 'sha256': hashlib.sha256(archive.read_bytes()).hexdigest()}
+    monkeypatch.setitem(build.STACK, 'weasyprint_windows', pin)
+    app = tmp_path / 'ClinReport'
+    build.add_weasyprint_windows(app, archive.parent)
+    files = sorted(str(p.relative_to(app)).replace('\\', '/') for p in app.rglob('*') if p.is_file())
+    assert files == ['weasyprint/LICENSE', 'weasyprint/_internal/pango.dll', 'weasyprint/weasyprint.exe']
+    monkeypatch.setitem(build.STACK, 'weasyprint_windows', dict(pin, sha256='0' * 64))
+    with pytest.raises(SystemExit, match='checksum mismatch'):
+        build.add_weasyprint_windows(tmp_path / 'other', archive.parent)

@@ -146,3 +146,52 @@ def test_opening_a_result_while_stopped_starts_opencravat_and_queues_it(app):
     a = app('stopped')
     assert a.open_when_ready('C:/r.sqlite', 'report') is True
     assert a.server.started and a.pending == ('C:/r.sqlite', 'report')
+
+
+def test_waiting_for_processes_survives_pidfd_einval(monkeypatch):
+    """psutil 7.2.2 waits with pidfd_open(), which Linux refuses (EINVAL) for a process whose main thread has exited
+    while other threads still run — OpenCRAVAT's processes right after terminate(). Waiting must go on by polling."""
+    import subprocess
+    import sys
+
+    import psutil
+    from clinreport_desktop import server
+
+    def einval(*args, **kwargs):
+        raise OSError(22, 'Invalid argument')
+
+    monkeypatch.setattr(psutil, 'wait_procs', einval)
+    quick = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(0.3)'])
+    slow = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)'])
+    try:
+        gone, alive = server.wait_gone([psutil.Process(quick.pid), psutil.Process(slow.pid)], timeout=2)
+        assert [p.pid for p in gone] == [quick.pid] and [p.pid for p in alive] == [slow.pid]
+    finally:
+        slow.kill()
+        quick.wait()
+        slow.wait()
+
+
+def test_stop_always_ends_stopped(monkeypatch):
+    """A failure while ending the processes must not leave the state at «stopping»: the window and --headless wait
+    for «stopped» (before: --quit waited 15 s and then killed the launcher)."""
+    from clinreport_desktop import server
+
+    srv = server.Server()
+    srv.state = 'running'
+    monkeypatch.setattr(srv, '_terminate', lambda: (_ for _ in ()).throw(OSError(22, 'Invalid argument')))
+    srv.stop()
+    assert srv.state == 'stopped'
+
+
+def test_server_gets_the_bundled_weasyprint(tmp_path, monkeypatch):
+    """Windows bundle: OpenCRAVAT's process (where documents are made) is told where WeasyPrint is."""
+    from clinreport_desktop import server
+
+    (tmp_path / 'bundle.json').write_text('{}', encoding='utf-8')
+    monkeypatch.setenv('CLINREPORT_BUNDLE_DIR', str(tmp_path))
+    monkeypatch.setenv('CLINREPORT_DATA_DIR', str(tmp_path / 'data'))
+    assert 'CLINREPORT_WEASYPRINT' not in server.server_env(tmp_path / 'conf.yml')
+    (tmp_path / 'weasyprint').mkdir()
+    (tmp_path / 'weasyprint' / 'weasyprint.exe').write_bytes(b'MZ')
+    assert server.server_env(tmp_path / 'conf.yml')['CLINREPORT_WEASYPRINT'] == str(tmp_path / 'weasyprint' / 'weasyprint.exe')

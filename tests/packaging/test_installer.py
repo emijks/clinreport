@@ -31,7 +31,7 @@ def test_app_id_never_changes():
 def test_only_bundle_folders_are_deleted(name):
     """User data (settings, the lab's own templates, jobs) is in %LOCALAPPDATA%\\ClinReport and must survive."""
     targets = re.findall(r'Name: "([^"]+)"', '\n'.join(section(name)))
-    assert targets and set(targets) <= {'{app}\\python', '{app}\\modules'}
+    assert targets and set(targets) <= {'{app}\\python', '{app}\\modules', '{app}\\weasyprint'}
 
 
 def test_user_data_folder_is_never_a_target():

@@ -15,3 +15,8 @@ pywin32==312; sys_platform == "win32"
 # runtime libraries that GNOME desktops ship: gir1.2-gtk-3.0, gir1.2-webkit2-4.1).
 PyGObject==3.58.1; sys_platform == "linux"
 pycairo==1.29.2; sys_platform == "linux"
+
+# PDF from the HTML templates (clinreport_core/output.py). Linux: Pango comes with the desktop (and with the genlab
+# server image's apt line). Windows: the official WeasyPrint executable of the same release instead (stack.toml
+# [weasyprint_windows]). macOS: none — the browser prints the HTML (Paged.js).
+weasyprint==70.0; sys_platform == "linux"
