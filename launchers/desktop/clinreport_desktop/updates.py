@@ -2,7 +2,8 @@
 
 Windows: the setup asset for this platform is downloaded into <data>/updates and started with /SILENT; the
 installer closes this launcher (--quit), replaces the program files only (user data stays) and starts
-ClinReport again (/RELAUNCH=1). Other platforms: the release page is opened.
+ClinReport again (/RELAUNCH=1). Linux (installed copy): the .tar.gz is downloaded, unpacked next to app/ and swapped in
+after the launcher has closed (linuxapp.apply_update). macOS, and Linux copies run from elsewhere: the release page.
 """
 
 import hashlib
@@ -91,7 +92,14 @@ def latest(include_prerelease: bool = False) -> dict:
 
 
 def can_install() -> bool:
-    return sys.platform == 'win32'
+    """Windows: the setup; Linux: the archive, when this is the installed copy (linuxapp.py). macOS: the release page."""
+    if sys.platform == 'win32':
+        return True
+    if sys.platform.startswith('linux'):
+        from . import linuxapp
+
+        return linuxapp.is_installed()
+    return False
 
 
 def updates_dir() -> Path:

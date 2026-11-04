@@ -190,7 +190,27 @@ def environment(versions: dict) -> list:
         ]
     elif sys.platform == 'win32':
         rows += [('Windows', ' '.join(platform.win32_ver()[:3])), ('WebView2', webview2_version())]
+    elif sys.platform.startswith('linux'):
+        rows += [
+            ('Linux', linux_distribution()),
+            ('desktop', os.environ.get('XDG_CURRENT_DESKTOP') or '-'),
+            ('session', os.environ.get('XDG_SESSION_TYPE') or ('wayland' if os.environ.get('WAYLAND_DISPLAY') else '-')),
+            ('installed', _safe_call(_linux_installed)),
+        ]
     return rows
+
+
+def linux_distribution() -> str:
+    try:
+        return platform.freedesktop_os_release().get('PRETTY_NAME') or '-'
+    except OSError:
+        return '-'
+
+
+def _linux_installed():
+    from . import linuxapp
+
+    return linuxapp.is_installed()
 
 
 def log_environment(versions: dict):

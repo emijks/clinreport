@@ -15,10 +15,9 @@ import sys
 import threading
 import time
 import urllib.parse
-import webbrowser
 from pathlib import Path
 
-from . import autostart, config, environments, paths, sessionlog
+from . import autostart, config, environments, isolation, paths, sessionlog
 
 log = logging.getLogger('clinreport.api')
 NOTE_CODES = ('1', '2', '3', '7', '8')
@@ -47,7 +46,7 @@ def open_folder(path: Path):
     elif sys.platform == 'darwin':
         subprocess.Popen(['open', str(path)])
     else:
-        subprocess.Popen(['xdg-open', str(path)])
+        isolation.popen_for_user(['xdg-open', str(path)])
 
 
 def reveal(path: Path):
@@ -59,7 +58,7 @@ def reveal(path: Path):
     elif sys.platform == 'darwin':
         subprocess.Popen(['open', '-R', str(path)])
     else:
-        subprocess.Popen(['xdg-open', str(path.parent)])
+        isolation.popen_for_user(['xdg-open', str(path.parent)])
 
 
 class Api:
@@ -112,7 +111,7 @@ class Api:
     @_safe
     def open_oc(self):
         self._require_running()
-        webbrowser.open(self._app.server.start_url)
+        isolation.open_url(self._app.server.start_url)
         return {'ok': True}
 
     @_safe
@@ -156,7 +155,7 @@ class Api:
             url = f'{self._app.server.url}/result/index.html?dbpath={dbpath}'
         config.remember_result(opened['dbpath'])
         log.info('opened %s (%s)', opened['dbpath'], 'report' if target == 'report' else 'viewer')
-        webbrowser.open(url)
+        isolation.open_url(url)
         return {'ok': True}
 
     @_safe
@@ -304,6 +303,41 @@ class Api:
         open_folder(paths.logs_dir())
         return {'ok': True}
 
+    # --- «Место на диске» (Linux) ---
+
+    @_safe
+    def disk_usage(self):
+        """Linux: bytes in the program, caches/temporary files and the user's data — all in the data folder."""
+        if not sys.platform.startswith('linux'):
+            return {'supported': False}
+        from . import linuxapp
+
+        return dict(
+            linuxapp.folder_sizes(), supported=True, installed=linuxapp.is_installed(), data_dir=str(paths.data_dir())
+        )
+
+    @_safe
+    def clear_cache(self):
+        from . import linuxapp
+
+        linuxapp.clear_cache()
+        return self.disk_usage()
+
+    @_safe
+    def uninstall(self, purge=False):
+        """Linux: close the window; once it is gone (WebKit writes its storage on exit), main() removes the program and,
+        with purge, the data (linuxapp.uninstall). Refuses up front what uninstall would refuse."""
+        if not sys.platform.startswith('linux'):
+            raise ValueError('Удаление из окна есть только в Linux; в Windows — «Установка и удаление программ».')
+        from . import linuxapp
+
+        if purge and not (paths.data_dir() / linuxapp.DATA_MARKER).is_file():
+            raise ValueError(f'{paths.data_dir()} не похожа на папку данных ClinReport; удалите её вручную.')
+        self._app.pending_uninstall = bool(purge)
+        log.info('uninstall requested (purge: %s)', bool(purge))
+        threading.Thread(target=self._app.quit, daemon=True, name='uninstall').start()
+        return {'ok': True}
+
     @_safe
     def install_update(self):
         """Windows: download and run the newer installer in the background; elsewhere: open the release page."""
@@ -311,7 +345,7 @@ class Api:
         if not update.get('newer'):
             raise ValueError('Обновлений нет.')
         if not update.get('can_install'):
-            webbrowser.open(update['url'])
+            isolation.open_url(update['url'])
             return {'ok': True, 'opened': update['url']}
         threading.Thread(target=self._app.install_update, daemon=True, name='update').start()
         return {'ok': True}
@@ -320,7 +354,7 @@ class Api:
     def open_link(self, url):
         if not url.startswith('https://'):
             raise ValueError('Ссылка не поддерживается.')
-        webbrowser.open(url)
+        isolation.open_url(url)
         return {'ok': True}
 
     # --- environments (other OpenCRAVAT installations) ---
@@ -461,7 +495,8 @@ class Api:
             chosen = app.window.create_file_dialog(webview.FileDialog.OPEN, file_types=('Модули ClinReport (*.zip)',))
             if not chosen:
                 return {'cancelled': True}
-            work = Path(tempfile.mkdtemp(prefix='clinreport-zip-', dir=paths.data_dir()))
+            paths.tmp_dir().mkdir(parents=True, exist_ok=True)
+            work = Path(tempfile.mkdtemp(prefix='clinreport-zip-', dir=paths.tmp_dir()))
             try:
                 modules = environments.modules_from_zip(Path(chosen[0]), work)
             except Exception:

@@ -7,10 +7,9 @@ import os
 import sys
 import threading
 import time
-import webbrowser
 from pathlib import Path
 
-from . import config, environments, instance, paths, sessionlog, updates
+from . import config, environments, instance, isolation, paths, sessionlog, updates
 from .server import Server, module_status, versions
 
 log = logging.getLogger('clinreport')
@@ -49,6 +48,7 @@ class App:
         self.pending = None  # (path, 'viewer' | 'report') to open once OpenCRAVAT is ready
         self._closing = False  # the window's close was cancelled to stop OpenCRAVAT first
         self._may_close = False  # OpenCRAVAT stopped: the next close goes through
+        self.pending_uninstall = None  # Linux: «Удалить ClinReport» asked; True = with the data (main() does it)
 
     def modules(self):
         at, cached = self._modules_cache
@@ -132,7 +132,7 @@ class App:
             self.pending = None
             self.open_result(path, target)
         elif config.load()['open_browser_at_start'] and not self.args.minimized and not self.args.selftest:
-            webbrowser.open(self.server.start_url)
+            isolation.open_url(self.server.start_url)
         threading.Thread(target=self.check_store, daemon=True).start()
         self.refresh_ru()
 
@@ -175,7 +175,8 @@ class App:
             self.update = {'state': 'unknown', 'error': str(e)}
 
     def install_update(self):
-        """Download the newer release's setup and start it (Windows); the setup then closes this launcher."""
+        """Download the newer release and install it. Windows: start its setup, which closes this launcher. Linux: unpack
+        the archive next to app/ and close; a detached shell swaps the folders and starts the new version."""
         update = self.update
         if not (update.get('newer') and update.get('can_install')) or update.get('state') == 'downloading':
             return
@@ -187,7 +188,13 @@ class App:
             progress(0, update['asset'].get('size') or 0)
             setup = updates.download(update['asset'], progress)
             self.update = dict(update, state='installing')
-            updates.run_installer(setup)
+            if sys.platform.startswith('linux'):
+                from . import linuxapp
+
+                linuxapp.apply_update(setup)
+                self.quit()
+            else:
+                updates.run_installer(setup)
         except Exception as e:
             log.warning('update failed: %s', e)
             self.update = dict(update, state='ok', install_error=str(e))
@@ -319,7 +326,8 @@ def run_headless(app):
     """No window: CI, servers, Linux without a desktop. Ctrl+C stops."""
     app.start_server()
     try:
-        while app.server.state in ('starting', 'running'):
+        # 'stopping' too: --quit stops the server on another thread; leaving now would exit before its workers are gone.
+        while app.server.state in ('starting', 'running', 'stopping'):
             if app.server.state == 'running' and not getattr(app, '_announced', False):
                 print(f'ClinReport: {app.server.url}  (Ctrl+C — остановить)', flush=True)
                 app._announced = True
@@ -351,7 +359,56 @@ def window_page() -> str:
     return page
 
 
+def linux_webkit() -> str:
+    """Linux: name GTK's program (window class = the .desktop StartupWMClass; WebKit's cache folder name) and check
+    that WebKitGTK can be loaded. Returns its version; raises RuntimeError (Russian, with the fix) when it cannot."""
+    try:
+        import gi
+
+        gi.require_version('Gtk', '3.0')
+        from gi.repository import GLib
+
+        GLib.set_prgname('clinreport')
+        GLib.set_application_name('ClinReport')
+        for api in ('4.1', '4.0'):  # the APIs pywebview 6.2 supports, in its order
+            try:
+                gi.require_version('WebKit2', api)
+                break
+            except ValueError:
+                continue
+        from gi.repository import WebKit2
+
+        return f'{WebKit2.get_major_version()}.{WebKit2.get_minor_version()}.{WebKit2.get_micro_version()} (WebKit2 {api})'
+    except (ImportError, ValueError) as e:
+        raise RuntimeError(
+            'Окно ClinReport не может открыться: в системе нет WebKitGTK '
+            f'({e}). Установите его — Debian/Ubuntu: sudo apt install gir1.2-webkit2-4.1; '
+            'Fedora: sudo dnf install webkit2gtk4.1. Пока ClinReport работает в браузере.'
+        ) from e
+
+
+def run_browser_only(app, reason: str):
+    """Linux without WebKitGTK: no control window; OpenCRAVAT starts and the browser opens its page."""
+    import shutil
+    import subprocess
+
+    log.error('%s', reason)
+    print(reason, file=sys.stderr, flush=True)
+    if shutil.which('notify-send'):
+        subprocess.run(['notify-send', '-a', 'ClinReport', 'ClinReport', reason], check=False, timeout=5)
+    app.args.minimized = False
+    if not config.load()['open_browser_at_start']:  # otherwise App._on_ready opens it already
+        app.server.ready_callbacks.append(lambda: isolation.open_url(app.server.start_url))
+    return run_headless(app)
+
+
 def run_window(app):
+    if sys.platform.startswith('linux'):
+        try:
+            log.info('WebKitGTK %s', linux_webkit())
+        except RuntimeError as e:
+            return run_browser_only(app, str(e))
+
     import webview
 
     from .api import Api
@@ -397,6 +454,7 @@ def run_window(app):
     icon = UI_DIR / ('icon.ico' if sys.platform == 'win32' else 'icon.png')  # WinForms accepts only .ico
     webview.start(
         after_start,
+        gui='gtk' if sys.platform.startswith('linux') else None,  # not Qt, even if some Qt is importable
         private_mode=False,
         storage_path=str(paths.data_dir() / 'webview'),
         icon=str(icon) if icon.exists() else None,
@@ -447,6 +505,32 @@ def quit_running(timeout=15) -> int:
     return 0
 
 
+def install_or_uninstall(args) -> int:
+    """Linux: `clinreport --install` / `--uninstall [--purge]` (linuxapp.py)."""
+    from . import linuxapp
+
+    data = paths.data_dir()
+    try:
+        if args.install:
+            target = linuxapp.install(paths.bundle_dir(), stop_running=quit_running)
+            print(f'ClinReport установлен в {target}.')
+            print('Запуск: меню приложений → ClinReport, или команда «clinreport» в терминале.')
+            print('Скачанную папку теперь можно удалить. Удаление программы: clinreport --uninstall [--purge]')
+            return 0
+        removed = linuxapp.uninstall(purge=args.purge, stop_running=quit_running)
+    except linuxapp.InstallError as e:
+        print(f'Ошибка: {e}', file=sys.stderr)
+        return 1
+    for path in removed:
+        print(f'удалено: {path}')
+    if args.purge:
+        print('ClinReport удалён полностью, вместе с данными.')
+    else:
+        print(f'ClinReport удалён. Данные (настройки, шаблоны, модули, задания) остались в {data};')
+        print(f'удалить и их: rm -rf "{data}"')
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog='clinreport')
     parser.add_argument('result', nargs='?', help='OpenCRAVAT result .sqlite to open')
@@ -454,7 +538,13 @@ def main(argv=None):
     parser.add_argument('--minimized', action='store_true', help='start with the window minimised (autostart)')
     parser.add_argument('--selftest', metavar='OUT.json', help='open the window, check it, write a report and exit')
     parser.add_argument('--quit', action='store_true', help='stop a running ClinReport (used by the uninstaller)')
+    if sys.platform.startswith('linux'):
+        parser.add_argument('--install', action='store_true', help='copy this build into the data folder, add a menu entry')
+        parser.add_argument('--uninstall', action='store_true', help='remove the program and its menu entry, keep the data')
+        parser.add_argument('--purge', action='store_true', help='with --uninstall: remove the data folder too')
     args = parser.parse_args(argv)
+    if getattr(args, 'purge', False) and not args.uninstall:
+        parser.error('--purge only goes with --uninstall')
     for stream in (sys.stdout, sys.stderr):  # Windows consoles/pipes default to a legacy code page
         if stream is not None and hasattr(stream, 'reconfigure'):
             stream.reconfigure(encoding='utf-8', errors='replace')
@@ -465,8 +555,19 @@ def main(argv=None):
     sessionlog.setup()
     if args.quit:
         return quit_running()
+    if getattr(args, 'install', False) or getattr(args, 'uninstall', False):
+        return install_or_uninstall(args)
     if not args.selftest and instance.hand_over(args.result or ''):
         return 0  # the running launcher took it
+
+    # The only launcher of this user from here on: its temporary files are ours to clear.
+    isolation.contain()
+    isolation.clean_tmp()
+    if sys.platform.startswith('linux'):
+        from . import linuxapp
+
+        linuxapp.mark_data_dir()
+        linuxapp.clean_leftovers()
 
     # The extension's code (settings, templates) runs in this process too, on the same conf dir.
     os.environ['CLINREPORT_CONF_DIR'] = str(paths.conf_dir())
@@ -487,11 +588,30 @@ def main(argv=None):
     try:
         if args.headless:
             return run_headless(app)
-        run_window(app)
-        return 0
+        return run_window(app) or 0
     finally:
         listener.close()
         app.server.stop()
+        if app.pending_uninstall is not None:
+            uninstall_after_close(app.pending_uninstall)
+
+
+def uninstall_after_close(purge: bool):
+    """«Удалить ClinReport» in the window (Linux): the window and WebKit are gone; remove the program (and the data)."""
+    import shutil
+    import subprocess
+
+    from . import linuxapp
+
+    try:
+        linuxapp.uninstall(purge=purge)
+        text = 'ClinReport удалён' + (' вместе с данными.' if purge else f'. Ваши данные остались в {paths.data_dir()}.')
+    except Exception as e:  # noqa: BLE001 - say what happened; nobody else will
+        log.exception('uninstall failed')
+        text = f'Не удалось удалить ClinReport: {e}'
+    print(text, flush=True)
+    if shutil.which('notify-send'):
+        subprocess.run(['notify-send', '-a', 'ClinReport', 'ClinReport', text], check=False, timeout=5, env=isolation.user_env())
 
 
 if __name__ == '__main__':

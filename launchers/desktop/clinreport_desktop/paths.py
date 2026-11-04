@@ -42,6 +42,21 @@ def conf_dir() -> Path:
     return data_dir() / 'conf'
 
 
+def cache_dir() -> Path:
+    """Caches that are safe to delete at any time (Linux: XDG_CACHE_HOME of the app — WebKit, Mesa, pip)."""
+    return data_dir() / 'cache'
+
+
+def tmp_dir() -> Path:
+    """Temporary files of this app (Linux: TMPDIR); emptied when the launcher starts."""
+    return data_dir() / 'tmp'
+
+
+def install_dir() -> Path:
+    """Linux: where `clinreport --install` puts the program (bundle.json, python/, modules/), next to the data."""
+    return data_dir() / 'app'
+
+
 def logs_dir() -> Path:
     """macOS: ~/Library/Logs/ClinReport, where Console.app lists them; elsewhere (and with CLINREPORT_DATA_DIR) data/logs."""
     if sys.platform == 'darwin' and not os.environ.get('CLINREPORT_DATA_DIR'):

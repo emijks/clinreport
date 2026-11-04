@@ -917,8 +917,8 @@ class Installer:
         if not version:
             raise EnvironmentError_(f'Не найдены модули ClinReport в {source}.')
         self._step(env['id'], f'Устанавливаю модули ClinReport {version} в {modules_dir}')
-        paths.data_dir().mkdir(parents=True, exist_ok=True)
-        work = Path(tempfile.mkdtemp(prefix='clinreport-install-', dir=paths.data_dir()))
+        paths.tmp_dir().mkdir(parents=True, exist_ok=True)  # emptied at start-up: a crash leaves nothing behind
+        work = Path(tempfile.mkdtemp(prefix='clinreport-install-', dir=paths.tmp_dir()))
         try:
             staged = work / 'modules'
             for kind, name in OUR_MODULES:

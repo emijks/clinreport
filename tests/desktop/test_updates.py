@@ -140,6 +140,7 @@ def test_installer_is_started_silently_and_relaunches(data_dir, monkeypatch):
 
 
 def test_app_install_update_downloads_then_runs(monkeypatch):
+    monkeypatch.setattr('sys.platform', 'win32')
     asset = {'name': 'setup.exe', 'url': 'x', 'size': 3}
     app = SimpleNamespace(update={'state': 'ok', 'newer': True, 'can_install': True, 'version': '3.0.1', 'asset': asset})
     calls = []
@@ -147,6 +148,33 @@ def test_app_install_update_downloads_then_runs(monkeypatch):
     monkeypatch.setattr(updates, 'run_installer', lambda setup: calls.append(('run', setup)))
     App.install_update(app)
     assert calls == ['download', ('run', 'setup')] and app.update['state'] == 'installing'
+
+
+def test_app_install_update_on_linux_unpacks_then_closes(monkeypatch):
+    """Linux: no installer to start — the archive is unpacked (linuxapp.apply_update) and the window closes itself."""
+    from clinreport_desktop import linuxapp
+
+    monkeypatch.setattr('sys.platform', 'linux')
+    asset = {'name': 'ClinReport-3.1.1-linux-x64.tar.gz', 'url': 'x', 'size': 3}
+    calls = []
+    app = SimpleNamespace(update={'state': 'ok', 'newer': True, 'can_install': True, 'asset': asset},
+                          quit=lambda: calls.append('quit'))
+    monkeypatch.setattr(updates, 'download', lambda a, progress: 'archive')
+    monkeypatch.setattr(updates, 'run_installer', lambda setup: pytest.fail('no installer on Linux'))
+    monkeypatch.setattr(linuxapp, 'apply_update', lambda archive: calls.append(('apply', archive)))
+    App.install_update(app)
+    assert calls == [('apply', 'archive'), 'quit'] and app.update['state'] == 'installing'
+
+
+@pytest.mark.parametrize('platform, installed, expected', [
+    ('win32', False, True), ('darwin', False, False), ('linux', True, True), ('linux', False, False),
+])
+def test_can_install(monkeypatch, platform, installed, expected):
+    from clinreport_desktop import linuxapp
+
+    monkeypatch.setattr('sys.platform', platform)
+    monkeypatch.setattr(linuxapp, 'is_installed', lambda: installed)
+    assert updates.can_install() is expected
 
 
 def test_app_install_update_reports_failures(monkeypatch):

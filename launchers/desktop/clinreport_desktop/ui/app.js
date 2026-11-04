@@ -442,6 +442,43 @@ async function loadSettings() {
     $('s-data-dir').textContent = s.data_dir;
     renderRu();
   });
+  await loadDisk();
+}
+
+// --- «Место на диске» (Linux: everything lives in the data folder; api.disk_usage) ---
+
+function bytes(n) {
+  if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} КБ`;
+  if (n < 1024 * 1024 * 1024) return `${Math.round(n / 1024 / 1024)} МБ`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(1).replace('.', ',')} ГБ`;
+}
+
+function renderDisk(d) {
+  $('disk-card').hidden = !d.supported;
+  if (!d.supported) return;
+  $('d-program').textContent = d.installed ? bytes(d.program) : 'запущена не установленная копия';
+  $('d-cache').textContent = bytes(d.cache);
+  $('d-data').textContent = bytes(d.data);
+  $('d-hint').textContent = `Всё хранится в ${d.data_dir}; вне этой папки — только значок в меню приложений и команда clinreport.`;
+}
+
+async function loadDisk() {
+  await busy(null, async () => renderDisk(await call('disk_usage')));
+}
+
+function confirmUninstall() {
+  const purge = el('input', { type: 'checkbox', id: 'u-purge' });
+  const go = el('button', { className: 'btn stop', type: 'button' }, 'Удалить и закрыть');
+  go.addEventListener('click', (e) => busy(e.currentTarget, async () => {
+    await call('uninstall', purge.checked);
+    closeModal();
+  }));
+  openModal('uninstall', 'Удалить ClinReport?', [
+    el('p', { style: 'margin:0 0 10px' }, 'ClinReport закроется, затем будут удалены программа, кэш, значок в меню и автозапуск.'),
+    el('label', { className: 'check-line', style: 'margin:0 0 14px' }, purge,
+      el('span', {}, 'Удалить также мои данные', el('small', {}, 'Настройки, шаблоны лаборатории, модули OpenCRAVAT и задания — без возможности восстановления'))),
+    el('div', { className: 'row end' }, el('button', { className: 'btn ghost', type: 'button', onclick: closeModal }, 'Отмена'), go)]);
+  go.focus();
 }
 
 function renderRu() {
@@ -863,6 +900,10 @@ function init() {
     toast(ru.state === 'ok' ? 'Аннотации обновлены' : 'Не удалось загрузить аннотации');
   }));
   $('open-data').addEventListener('click', () => busy(null, () => call('open_data_folder')));
+  $('clear-cache').addEventListener('click', (e) => busy(e.currentTarget, async () => {
+    renderDisk(await call('clear_cache')); toast('Кэш очищен');
+  }));
+  $('uninstall').addEventListener('click', confirmUninstall);
   $('foot').addEventListener('click', () => busy(null, () => call('open_data_folder')));
   $('modal-close').addEventListener('click', closeModal);
   $('modal').addEventListener('mousedown', (e) => { if (e.target === e.currentTarget) closeModal(); });
