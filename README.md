@@ -1,6 +1,6 @@
 # ClinReport
 
-Clinical reports (`.docx`) from [OpenCRAVAT](https://opencravat.org) results. The clinician marks variants in
+Clinical reports (Word, PDF, HTML) from [OpenCRAVAT](https://opencravat.org) results. The clinician marks variants in
 OpenCRAVAT's **Note** column, opens the review window from the result's **Summary** tab, checks and edits the report and
 saves it from a Word template — the lab's standard ones (DZM, FND, 10x for LPWGS) or its own.
 

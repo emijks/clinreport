@@ -18,6 +18,7 @@ reference, and explanation of the design and its decisions.
 | | [development/packaging.md](development/packaging.md) | the desktop bundle, installers, OpenCRAVAT patches, the launcher |
 | | [development/releasing.md](development/releasing.md) | versions, tags, the release workflow |
 | | [development/extending.md](development/extending.md) | recipes: a template field, a column, an endpoint, a setting |
+| | [development/templates.md](development/templates.md) | templates and formats (Word, HTML, PDF), PDF engines, adding a template or a report kind |
 | **Reference** | [reference/http-api.md](reference/http-api.md) | the review page ↔ server contract |
 | | [reference/data-model.md](reference/data-model.md) | Note codes, result columns, the template context, the database |
 | | [reference/opencravat-integration.md](reference/opencravat-integration.md) | the OpenCRAVAT extension points we rely on, version matrix |

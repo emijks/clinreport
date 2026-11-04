@@ -12,7 +12,9 @@ python -m venv .venv
 That installs OpenCRAVAT 3.2.3, the extension's and the launcher's dependencies (`packaging/requirements.txt`), pytest,
 pytest-cov and ruff. **Linux:** pip builds PyGObject (the window's GTK binding) from source — install its build
 dependencies first: `sudo apt install pkg-config libgirepository-2.0-dev libcairo2-dev` (Fedora: `pkgconf-pkg-config
-gobject-introspection-devel cairo-devel`). Then `python -m pytest` and `ruff check .` must pass ([testing.md](testing.md)).
+gobject-introspection-devel cairo-devel`). WeasyPrint (PDFs, Linux only) needs Pango at run time — every desktop has
+it; a bare server or container: `libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0`. Without it the PDF tests are
+skipped and PDFs fall back to the browser ([templates.md](templates.md)). Then `python -m pytest` and `ruff check .` must pass ([testing.md](testing.md)).
 
 Example results (patient data, never committed): put `trio1.sqlite` (legacy column layout, three samples) and
 `pah2.vevat_annotated.sqlite` (new layout, one sample without an id) into a folder outside the repository and set

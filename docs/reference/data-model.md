@@ -136,6 +136,41 @@ Server-side post-processing in `service._report`: a sample number of literally `
 `(chrom, pos, ref, alt)`: found → `genotype = ref/alt`, `molecules = "<ad>x/<dp>x"`; absent → `ref/ref`, `0x/-`.
 `qual` and `interpretation` are left for the clinician.
 
+### Screening
+
+«Профилактический ДНК-скрининг» (`clinreport_core/screening.py`, `mode: "screening"`), one per sample, from
+**Notes 1 and 2** only. Strings throughout; `_` marks what the clinician must fill (the checks refuse it).
+
+```json
+{
+  "patient": {"id": "sample1", "participant": "_", "sex": "_", "date": "05.11.2026", "mean_depth": "_×"},
+  "variants": [{"gene": "UBQLN4", "disease": "Immunodeficiency due to defect in MAPBP-interacting protein",
+                "omim": "610798", "position": "chr1:156053689 T>G", "hgvs_c": "NM_020131.5:c.13A>C",
+                "hgvs_p": "p.Ser5Arg", "classification": "патогенный", "zygosity": "гомозигота", "inheritance": "АР",
+                "frequency": "—", "reads_alt": "135", "reads_total": "136"}],
+  "interpretation": ["Обнаружен ранее _ описанный в литературе вариант (…) гена <i>UBQLN4</i>, …"],
+  "recommendations": [],
+  "references": [{"key": "feder1997", "text": "Feder JN, et al. <i>J Biol Chem</i>. 1997;…"}]
+}
+```
+
+| Field | Built from |
+|---|---|
+| `disease`, `inheritance` | the Russian sheet `secondary` (`Disease/Phentyope`, `Inheritance`) for the gene, else `vep_omim_pheno__pheno` (text before the MIM number) / `vep_omim_pheno__inher` — one code `АД АР ХД ХР ХС`, empty (→ `_`) when OpenCRAVAT gives none or several |
+| `omim` | the 6-digit MIM number in `vep_omim_pheno__pheno` (else in `vep_omim_pheno__id`) |
+| `position`, `hgvs_c`, `hgvs_p` | `chrom:pos ref>alt`; `<refseq or transcript>:<hgvsc>`; `vep_csq__hgvsp` |
+| `classification` | Note 1 → `патогенный`, 2 → `вероятно патогенный` |
+| `zygosity` | `het`/`hom`/`hemi` → `гетерозигота`/`гомозигота`/`гемизигота` |
+| `frequency` | gnomAD4 aggregated AF: `0,0384`, `3,2×10⁻⁵`; 0 or none → `—` |
+| `reads_alt`, `reads_total` | `tagsampler_new__ad`, `__dp` of this sample |
+| `interpretation` | the default report's narrative of the variant as one paragraph, without the phenotype sentence; `<i>gene</i>` |
+| `recommendations` | empty → the template's `study.json` `default_recommendations` |
+
+**Checks** (`screening.validate`, before any format): patient fields filled; per variant the required fields,
+zygosity ∈ {гетерозигота, гомозигота, гемизигота, компаунд-гетерозигота}, inheritance ∈ {АД, АР, ХД, ХР, ХС},
+classification ∈ {патогенный, вероятно патогенный}, integer reads with alt ≤ total; an interpretation when there are
+variants and no `_` left in it; unique reference keys; every `[@key]` defined. A gene outside the ACMG list only warns.
+
 ## 4. Template variables (docxtpl / Jinja)
 
 Extracted per loop from `word/document.xml` and the headers/footers of each `.docx` (re-extract with the snippet in
@@ -167,6 +202,15 @@ Paragraph loop `interpretation` (DZM, FND): `intro_pre`, `gene` (italic), `intro
 The CNV/MT/STR row fields are what future implementations must produce ([issue 010](../issues/clinreport/010-cnv-mt-str-sections-empty.md)).
 `sf_variants.pathogenicity` is rendered but not editable on the page ([issue 020](../issues/clinreport/020-review-page-parity-gaps.md)).
 Unknown variables render as empty strings (docxtpl default), so a context missing a key does not fail.
+
+### Screening templates (HTML and Word)
+
+They read `screening.prepare(context, templates/html/screening/data)`, not the context: `patient.{participant, sex,
+date, mean_depth}`, `variants[].{…as above}`, `interpretation[]` and `recommendations[]` with `[@key]` replaced by
+numbers (`[12]`, `[12–14]`, after the fixed list), `references[]` (the fixed `study.json` list + the cited extra sources),
+`study.{report_title, acmg_version, gnomad_note, tech.{method, bases, read_type, read_length, quality[]}}`,
+`gene_groups[].{title, text[], genes[]}`, `acmg_genes[]`, `inheritance_legend`. HTML: rich text through `| rich`;
+Word: rich text arrives as `RichText` (`{{r par }}`). Full list: «Список полей» / `templates.field_paths('screening')`.
 
 ## 5. Page layouts (`labels.LAYOUTS`)
 

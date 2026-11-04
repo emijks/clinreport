@@ -63,41 +63,53 @@ Samples are addressed by `index` everywhere (ids can be `null`).
 
 ## `POST process`
 
-Body: `{"dbpath": "…" | "job_id": "…", "target": 0, "mode": "default" | "lpwgs"}` (`target` = sample index, default 0;
-`mode` default `"default"`).
+Body: `{"dbpath": "…" | "job_id": "…", "target": 0, "mode": "default" | "lpwgs" | "screening"}` (`target` = sample
+index, default 0; `mode` default `"default"`).
 
 - `default`: one `kind: "default"` report per sample, in file order. The target only affects the narrative
   ("Вариант обнаружен у …") and `is_target`.
 - `lpwgs`: the target → `kind: "default"`, every other sample → `kind: "10x"`.
+- `screening`: one `kind: "screening"` report («Профилактический ДНК-скрининг», Notes 1 and 2) per sample
+  ([data model](data-model.md#screening)).
 
 ```json
 {
   "mode": "default",
   "reports": [
-    {"label": "sample1", "kind": "default", "is_target": true,
+    {"label": "sample1", "kind": "default", "is_target": true, "name": "Заключение (sample1)",
      "filename": "Заключение (sample1).docx", "context": { … see 05-data-model … }}
   ],
-  "layouts": {"default": { … }, "10x": { … }},
+  "layouts": {"default": { … }, "10x": { … }, "screening": { … }},
   "warnings": ["Не удалось получить аннотации на русском (…); используются аннотации OpenCRAVAT."]
 }
 ```
 
-`filename` for 10x reports: `Заключение LPWGS (<label>).docx`. The clinician name comes from the caller's settings at the
+`name` (no extension; the page adds the chosen format's): `Заключение (<label>)`, `Заключение LPWGS (<label>)`,
+`Отчёт ДНК-скрининга (<label>)`; `filename` = `name` + `.docx` (older pages). Every layout carries
+`templates: [{id, title, formats}]`, `format_labels`, and `pdf_mode`: `"server"` (a PDF comes back) or `"browser"` (see
+render). The clinician name comes from the caller's settings at the
 time of processing. Russian annotations are fetched (or taken from the 10-min cache) during this call; failure only adds a warning.
 
 ## `POST render`
 
-Body: `{"context": {…}, "kind": "default" | "10x", "template": "<template id>", "filename": "…"}`.
-`template` is a built-in id (`DZM`, `FND`, `10x`) or a custom one (`u-…`, see [Templates](#templates)); default `DZM` /
-`10x` by kind. Unknown templates and a template of the other kind → `400`. `filename` is sanitised
-(basename, `<>:"/\|?*` → `_`, `.docx` appended).
+Body: `{"context": {…}, "kind": "default" | "10x" | "screening", "template": "<template id>",
+"format": "docx" | "html" | "pdf", "filename": "…"}`.
+`template` is a built-in id (`DZM`, `FND`, `10x`, `screening`) or a custom one (`u-…`, see [Templates](#templates));
+default by kind. `format` defaults to `docx` and must be one of the template's `formats`. Unknown templates, a template
+of another kind, a format the template does not make → `400`. A `screening` report that fails its checks → `400` with
+`"Документ не собран:\n<one problem per line>"`. `filename` is sanitised (basename, `<>:"/\|?*` → `_`, the format's
+extension replaces `.docx`/`.html`/`.pdf`).
 
-Response: `200`, body = `.docx` bytes,
-`Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document`,
-`Content-Disposition: attachment; filename="report.docx"; filename*=UTF-8''<percent-encoded name>`.
+| `format` | Response body | `Content-Type` |
+|---|---|---|
+| `docx` | Word document | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` |
+| `html` | one self-contained HTML file (CSS, fonts, images inlined; CSP) | `text/html; charset=utf-8` |
+| `pdf`, `pdf_mode` `server` | PDF (WeasyPrint) | `application/pdf` |
+| `pdf`, `pdf_mode` `browser` | the HTML + Paged.js + a print call, header `X-ClinReport-Print: 1` — the page opens it in a new tab | `text/html; charset=utf-8` |
 
-The context is rendered as sent (edits included). `variation` and `zygosity` strings are converted to docxtpl
-`RichText` so `\n` becomes a line break (`templates.richtextify`).
+`Content-Disposition: attachment; filename="report.<ext>"; filename*=UTF-8''<percent-encoded name>`.
+The context is rendered as sent (edits included). Word: `variation` and `zygosity` strings become docxtpl `RichText`
+(`\n` = a line break, `templates.richtextify`); screening rich text (`<i>` …) becomes styled runs.
 
 ## `POST upload`
 
@@ -158,11 +170,11 @@ admins in login mode** (`is_admin`: `admin_list`, filled from `opencravat:admin`
 
 | Route | Body / query | Response |
 |---|---|---|
-| `GET templates` | — | `{"templates": [{"id", "title", "kind", "builtin", "added"?, "check"?}], "kinds": {"default": "…", "10x": "…"}, "editable", "default_template", "max_bytes"}` |
+| `GET templates` | — | `{"templates": [{"id", "title", "kind", "builtin", "formats", "added"?, "check"?}], "kinds": {"default": "…", "10x": "…", "screening": "…"}, "editable", "default_template", "max_bytes"}` |
 | `POST template_add` | `{"title", "kind": "default"\|"10x", "data": "<base64 .docx>", "replace"?: "<id>"}` | `{"template": {…, "check"}}`; `400` for a duplicate title, a non-.docx file, a Jinja syntax error or a non-admin |
 | `POST template_delete` | `{"id"}` | `{"deleted": "<id>"}`; built-ins and non-admins → `400` |
 | `POST template_check` | `{"id"}` | `{"ok", "error", "unknown": [{"field": "patient.birth_dat", "suggestion": "patient.birth_date"}]}` |
-| `GET template_file` | `?id=` | the `.docx` (download, or the starting point for a new template) |
+| `GET template_file` | `?id=` | the `.docx` (download, or the starting point for a new template); an HTML-only template: its folder as `.zip` |
 | `GET template_fields` | — | `{"default": ["patient.id", "p_variants[].gene", …], "10x": […]}` |
 
 **The check** renders the template against an example report with one row in every list (`templates.example_context`)

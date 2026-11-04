@@ -13,7 +13,7 @@ changes go straight into them (with a test in `tests/core/`).
 ```python
 import re, zipfile
 
-xml = zipfile.ZipFile('modules/webapps/clinreport/templates/DZM.docx').read('word/document.xml').decode()
+xml = zipfile.ZipFile('modules/webapps/clinreport/templates/docx/DZM.docx').read('word/document.xml').decode()
 text = re.sub(r'<[^>]+>', '', xml)
 print(sorted(set(re.sub(r'\s+', ' ', t) for t in re.findall(r'(\{\{.*?\}\}|\{%.*?%\})', text))))
 ```
@@ -21,18 +21,11 @@ print(sorted(set(re.sub(r'\s+', ' ', t) for t in re.findall(r'(\{\{.*?\}\}|\{%.*
 (Headers/footers live in `word/header*.xml` / `word/footer*.xml` — check those too if a variable seems missing.)
 Edit templates in Word; keep each Jinja tag inside one run (type it in one go) or docxtpl will not see it.
 
-## Add a template (e.g. a new clinic "XYZ")
+## Add a template
 
-**Usually no code change:** an OpenCRAVAT admin opens the review page → «Шаблоны» → adds the `.docx` (desktop app: its
-Шаблоны tab). Start from a copy of DZM («Скачать образец» in the browser, «Открыть папку» in the app), use «Список полей», and fix what the check reports
-([04 · Templates](../reference/http-api.md#templates)).
-
-To ship a template **built in** (every installation, server and desktop):
-
-1. Put `XYZ.docx` into `modules/webapps/clinreport/templates/`.
-2. `clinreport_core/templates.py`: add `('XYZ', 'XYZ', 'default')` to `BUILTIN`.
-3. `test_builtin_templates_use_only_known_fields` checks it automatically; also add it to
-   `test_render_default_templates_with_edits` and to the list `tests/e2e/smoke_http.py` renders.
+Word, HTML/PDF, or a whole new report kind: **[templates.md](templates.md)** — the model (a template = one id, a file
+per format), the CSS both PDF engines read, and three recipes with the files to touch. A lab's own Word template needs no
+code: an admin adds it on the page («Шаблоны»).
 
 ## Add an editable patient/tech field (e.g. `patient.birth_date`)
 
@@ -83,13 +76,10 @@ Decide the scope first ([05 §8](../reference/data-model.md#8-settings-files)): 
 3. Read it with `load_user_settings(caller)['my_key']` (the handler receives `caller`). Settings reach the page via
    `open`/`settings` responses. Never put a secret in the response.
 
-## Add a report kind (e.g. another LPWGS document)
+## Add a report kind
 
-1. `SampleProcessor`/`service.process`: produce `kind: '<new>'` reports for the right samples.
-2. `TEMPLATES['<new>']`, `LAYOUTS['<new>']` (common fields, tables, `similar`/`upload` flags, `templates: ['<new>']`).
-3. `service.render`: currently `kind == '10x'` → template `10x`, else a `DEFAULT_TEMPLATES` value; generalise to
-   "if `LAYOUTS[kind]['templates']` has one entry, use it".
-4. `static/app.js`: the tab badge (`renderReports`) and the date label (`renderPanel`) special-case `10x`.
+[templates.md, recipe 3](templates.md#recipe-3--a-new-report-kind-worked-example-screening) — `screening` is the worked
+example (context builder, checks, layout with `add_rows`/`lists`, templates, tests).
 
 ## Add a batch reporter (optional, CLI / Jobs-table use)
 

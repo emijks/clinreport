@@ -13,9 +13,11 @@ separate Python, no administrator rights**. It runs the same extension as any Op
 | `karchinlab_modules_ref`, `base_modules` | hg38, wgnote, excelreporter from KarchinLab's modules repository at that commit |
 | `update_repo` | the GitHub repository whose `v*` releases the in-app update reads (empty = off) |
 | `[macos_minimum]` | oldest macOS per architecture (x64 10.15, arm64 11.0), enforced by the build |
+| `[weasyprint_windows]` | WeasyPrint's Windows build (`version`, `url`, `sha256`) → `<bundle>/weasyprint/`; same release as `weasyprint==` in `requirements.txt` (tested) |
 
 Packages the bundle installs next to OpenCRAVAT: `packaging/requirements.txt` (docxtpl and the Postgres client for our
-modules; pywebview, psutil, pywin32 (Windows), PyGObject + pycairo (Linux) for the launcher).
+modules; pywebview, psutil, pywin32 (Windows), PyGObject + pycairo (Linux) for the launcher; WeasyPrint (Linux) for the
+PDFs of the HTML templates). Windows gets WeasyPrint's official standalone build instead (`[weasyprint_windows]` below).
 
 **Bumping OpenCRAVAT:** change `opencravat` in `stack.toml` and `requirements-dev.txt`, run the tests, build on Windows and
 re-check [the Windows patches](#opencravat-3x-on-windows) (drop the ones OpenCRAVAT fixed,
@@ -31,7 +33,8 @@ packaging/dist/ClinReport/
 ├── python/      CPython + open-cravat + packaging/requirements.txt + the launcher (clinreport_desktop)
 │                + clinreport_oc_compat.py/.pth (OpenCRAVAT patches, below)
 ├── modules/     base modules + our modules/<type>/<module> (*.md left out)
-└── bundle.json  versions, build time, "managed" (our modules), update repository
+├── weasyprint/  Windows only: weasyprint.exe + Pango DLLs (PDF engine; the launcher sets CLINREPORT_WEASYPRINT)
+└── bundle.json  versions, build time, "managed" (our modules), update repository, "pdf" (the promised PDF engine)
 ```
 
 Run it with any Python ≥ 3.11; nothing is installed into that Python. Downloads (CPython, base modules) are cached in
@@ -172,6 +175,14 @@ load finishes — a failed load leaves an empty window), and the page's own erro
 the launcher logs a warning if that has not come 20 s after the window opened. `--selftest` requires `ready`.
 Templates and report settings go through ClinReport's own `service` functions in-process (`CLINREPORT_CONF_DIR` = the
 user's conf dir, `CLINREPORT_EDITION=desktop`), so the window and the browser page agree.
+
+## PDF engines per platform
+
+The HTML templates' PDFs ([templates.md](templates.md), [ADR 0017](../decisions/0017-html-templates-and-pdf.md)):
+Linux — the `weasyprint` package (Pango from the desktop); Windows — `<bundle>/weasyprint/weasyprint.exe`; macOS — the
+browser prints the HTML (Paged.js, no Pango build fits macOS 10.15). `bundle.json` `"pdf"` records it;
+`packaging/check_pdf.py` renders the example screening report with the bundle and fails if the engine is not the
+promised one (CI, every desktop build). Bundle size: Linux +~70 MB, Windows +~60 MB, macOS +1 MB (Paged.js).
 
 ## Checking a build
 

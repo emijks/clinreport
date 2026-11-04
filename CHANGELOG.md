@@ -20,11 +20,24 @@ All notable changes to ClinReport. Format: [Keep a Changelog](https://keepachang
 - **In-app update on Linux**, as on Windows: «обновить до X» downloads the new archive, checks it, closes ClinReport,
   swaps the program and starts the new version; the data stays.
 - Without WebKitGTK the Linux app says which package to install and runs OpenCRAVAT in the browser meanwhile.
+- **Reports in PDF and HTML, not only Word**: next to «Шаблон» the review page has «Формат»; each template offers the
+  formats it can make. HTML is one file that opens in any browser (fonts and pictures inside). PDF is saved directly on
+  the server and in the Windows and Linux apps; in the macOS app the report opens in a browser tab with the print
+  dialog («Сохранить как PDF»). CLINBIO still receives Word.
+- **«Профилактический ДНК-скрининг»** — a new report («Обработать как скрининг»): variants with Note 1 and 2, the
+  participant's data, interpretation paragraphs (a draft from the OpenCRAVAT data), recommendations (the standard ones if
+  left empty) and extra literature cited as `[@key]` and numbered after the fixed list. Strict checks before any document
+  (zygosity, inheritance code, reads, nothing left as `_`). PDF, HTML and Word. Design and texts by the GenLab
+  Secondary-findings project.
+- Built-in templates are organised by format (`templates/docx/`, `templates/html/<id>/`); a guide for adding templates
+  and report kinds (docs/development/templates.md, AGENTS.md).
 
 ### Fixed
 
 - `--headless` stopped by `--quit` could exit before OpenCRAVAT's worker processes were gone (the next start or `--quit`
   had to stop them).
+- Stopping OpenCRAVAT on Linux could fail half-way (psutil 7.2.2 `wait_procs` raising `EINVAL` from `pidfd_open` while a
+  process was exiting) and leave workers running; the wait now falls back to polling and stopping always completes.
 - Work folders of module installs («Окружения», modules from a .zip) are kept in the data folder's `tmp/`, emptied at
   start, so an interrupted install no longer leaves `clinreport-install-*` / `clinreport-zip-*` folders behind.
 
