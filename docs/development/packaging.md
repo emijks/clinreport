@@ -1,6 +1,6 @@
 # Packaging: the desktop app, installers, the extension zip
 
-The desktop app is OpenCRAVAT + ClinReport for one Windows or macOS user, with a small control window: **no Docker, no
+The desktop app is OpenCRAVAT + ClinReport for one Windows, macOS or Linux user, with a small control window: **no Docker, no
 separate Python, no administrator rights**. It runs the same extension as any OpenCRAVAT
 ([ADR 0004](../decisions/0004-features-live-in-the-extension.md)); only the launcher and the packaging are desktop-specific.
 
@@ -15,7 +15,7 @@ separate Python, no administrator rights**. It runs the same extension as any Op
 | `[macos_minimum]` | oldest macOS per architecture (x64 10.15, arm64 11.0), enforced by the build |
 
 Packages the bundle installs next to OpenCRAVAT: `packaging/requirements.txt` (docxtpl and the Postgres client for our
-modules; pywebview, psutil, pywin32 for the launcher).
+modules; pywebview, psutil, pywin32 (Windows), PyGObject + pycairo (Linux) for the launcher).
 
 **Bumping OpenCRAVAT:** change `opencravat` in `stack.toml` and `requirements-dev.txt`, run the tests, build on Windows and
 re-check [the Windows patches](#opencravat-3x-on-windows) (drop the ones OpenCRAVAT fixed,
@@ -43,7 +43,11 @@ Run it with any Python ≥ 3.11; nothing is installed into that Python. Download
   `ClinReport-<version>-windows-x64.exe`.
 - **macOS** → `ClinReport.app` (ad-hoc `codesign`) in `ClinReport-<version>-macos-<arm64|x64>.dmg` (`hdiutil`).
   Packaging **moves** the bundle into the `.app` — test it before packaging.
-- **Linux** → `.tar.gz` (testing only).
+- **Linux** → `ClinReport-<version>-linux-x64.tar.gz` with one folder, `ClinReport/` (start script `clinreport`, icon
+  `clinreport.png`; both are written by the build itself, so the bundle can be installed before packaging). The archive
+  leaves out `__pycache__` and the folders OpenCRAVAT creates in its package folder when the bundle was test-run.
+  Building needs `pkg-config libgirepository-2.0-dev libcairo2-dev` (pip builds PyGObject; there are no Linux wheels).
+  [Below](#linux-one-folder-gtk-window).
 
 Why a real Python and not PyInstaller: OpenCRAVAT runs `oc report`, `oc util …` and `pip install` by name and imports
 module code from disk; a frozen executable has neither ([ADR 0006](../decisions/0006-bundle-portable-python.md)). The app
@@ -57,6 +61,43 @@ needs a newer system (`pip download --platform macosx_10_15_x86_64 …`); before
 the bundle with `otool -l` (`LC_BUILD_VERSION minos` / `LC_VERSION_MIN_MACOSX`) and **fails the build** listing the
 offenders. `Info.plist`'s `LSMinimumSystemVersion` comes from the same value
 ([ADR 0011](../decisions/0011-macos-minimum-versions.md)). No CI runner has macOS 10.15; a real launch there needs an old Mac.
+
+## Linux: one folder, GTK window
+
+[ADR 0016](../decisions/0016-linux-desktop.md). Everything is in `~/.local/share/clinreport`:
+
+```
+~/.local/share/clinreport/
+├── app/              the program — `clinreport --install` copies the extracted archive here; replaced on update
+├── conf/ modules/ jobs/ logs/ python-packages/ …    the user's data, as on the other platforms
+├── cache/            XDG_CACHE_HOME of the app: WebKit, Mesa shader cache, pip (PIP_CACHE_DIR)
+├── tmp/              TMPDIR of the app; emptied at every start
+└── .clinreport-data  marker: `--purge` deletes only a folder that has it
+```
+
+Outside: `~/.local/share/applications/clinreport.desktop` (Icon is the absolute path of `app/clinreport.png`;
+`StartupWMClass=clinreport` = `GLib.set_prgname` in the launcher), the link `~/.local/bin/clinreport`, and
+`~/.config/autostart/clinreport.desktop` while «Запускать при входе» is on.
+
+- **`isolation.py`**: `contain()` sets `XDG_CACHE_HOME`, `TMPDIR`, `PIP_CACHE_DIR` before GTK is loaded, so the launcher,
+  WebKit's processes and OpenCRAVAT write there; `user_env()` / `open_url()` / `popen_for_user()` give programs started
+  for the user (xdg-open, the browser) the environment as it was — a browser started by us must not keep its cache in
+  our folder. Work folders of the module installs go to `tmp/` on every platform.
+- **`linuxapp.py`**: `install` (copy to `.app.new`, swap with `app/`, write the entries; a foreign `clinreport.desktop` —
+  one without `X-ClinReport-Bundle` — is never overwritten), `uninstall` (`PROGRAM_PARTS` only; `purge` = the whole folder,
+  with the marker check), `folder_sizes`/`clear_cache` for «Место на диске», `unpack_update`/`apply_update`.
+- **Update:** the asset `…-linux-x64.tar.gz` is downloaded to `updates/`, unpacked to `.app.new` (tarfile `data` filter;
+  one top folder; `bundle.json` platform must match) and a detached `sh` (`linuxapp.UPDATE_SCRIPT`) waits until the
+  launcher's process is gone (not merely a zombie), renames `app` → `.app.old`, `.app.new` → `app`, removes the old one
+  and starts `app/clinreport`. The launcher removes `.app.new`/`.app.old` left by an interrupted update at start.
+- **Window:** pywebview `gui='gtk'` on the system's WebKitGTK (API 4.1, else 4.0). `linux_webkit()` names the program
+  and checks that WebKit loads; without it the launcher logs and shows (`notify-send`) the `apt`/`dnf` command and runs
+  OpenCRAVAT in the browser (`run_browser_only`). The session log records the distribution, desktop, X11/Wayland, the
+  WebKitGTK version and whether this is the installed copy.
+- **Uninstall from the window** sets `App.pending_uninstall` and closes; `main()` removes after the window and WebKit
+  are gone (WebKit writes its storage on exit and would recreate `webview/`).
+- **CI** (`ubuntu-24.04`): the usual headless and window checks (`xvfb-run`), then `--install`, the window self-test of the
+  installed copy, `--uninstall --purge` in a throw-away `HOME`, and it fails if any file is left there.
 
 ## The Windows installer — `packaging/windows/ClinReport.iss`
 
@@ -104,7 +145,8 @@ makes Celery use the `solo` pool (on all platforms, for identical behaviour). No
    fetched and, if enabled, the browser opens. The update check runs in the background
    ([ADR 0009](../decisions/0009-in-app-updates-from-github-releases.md)). Closing the window stops the process tree.
 
-The window (`ui/`: plain HTML/CSS/JS in pywebview — WebView2 on Windows, WebKit on macOS) talks only to `api.py`.
+The window (`ui/`: plain HTML/CSS/JS in pywebview — WebView2 on Windows, WebKit on macOS, WebKitGTK on Linux) talks
+only to `api.py`.
 pywebview gets the page as one document (`window_page()` inlines `app.css` and `app.js`), not as a file path: a path would
 start pywebview's HTTP server on the fixed port 42001, shared by every pywebview app — when another program holds it the
 window stays empty on macOS and shows that program's page on Windows ([issue desktop/007](../issues/desktop/007-empty-window-macos.md)).
@@ -140,7 +182,8 @@ packaging/dist/ClinReport/python/python -I -m clinreport_desktop --quit
 packaging/dist/ClinReport/python/python -I -m clinreport_desktop --selftest out.json   # opens the real window, checks it, closes
 ```
 
-CI runs exactly these on Windows, macOS arm64 and macOS x64 for every push (`.github/workflows/ci.yml`), then packages.
+CI runs exactly these on Windows, macOS arm64, macOS x64 and Linux x64 for every push (`.github/workflows/ci.yml`),
+then packages. On Linux, run the window under `xvfb-run -a` when there is no display.
 Set `CLINREPORT_DATA_DIR` to a throw-away folder; run any other checks with a Python other than the bundle's (the launcher
 stops the bundle's other processes on start).
 

@@ -29,7 +29,7 @@ desktop apps find it through the in-app update.
 
 4. Watch the Release workflow: Version → CI (lint, tests, three desktop builds with smoke tests, installers) and
    Extension zip → GitHub release. Its files: `ClinReport-X-windows-x64.exe`, `ClinReport-X-macos-arm64.dmg`,
-   `ClinReport-X-macos-x64.dmg`, `clinreport-extension-X.zip`.
+   `ClinReport-X-macos-x64.dmg`, `ClinReport-X-linux-x64.tar.gz`, `clinreport-extension-X.zip`.
 5. Install the pre-release over the previous version (and update to it from inside the app); when it is good, tag
    `vX.Y.Z` on the same commit.
 
@@ -45,7 +45,8 @@ version works (same AppId), and user data is untouched either way.
 ## CI on every push
 
 `.github/workflows/ci.yml`: ruff; pytest on Linux and Windows with a coverage report; the desktop bundle on
-`windows-latest`, `macos-15` (arm64) and `macos-15-intel` with `--headless` HTTP checks, the window self-test and the
-installer/disk image as 14-day artifacts — so every branch can be tried before it is merged. Dependabot proposes updates
+`windows-latest`, `macos-15` (arm64), `macos-15-intel` and `ubuntu-24.04` with `--headless` HTTP checks, the window
+self-test (Linux: also install → self-test → purge, nothing may be left) and the installer/disk image/archive as 14-day
+artifacts — so every branch can be tried before it is merged. Dependabot proposes updates
 of the actions (weekly) and of the pip requirements (monthly); `open-cravat` is bumped by hand
 ([packaging.md](packaging.md#the-pinned-stack--packagingstacktoml)).

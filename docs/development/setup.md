@@ -10,7 +10,9 @@ python -m venv .venv
 ```
 
 That installs OpenCRAVAT 3.2.3, the extension's and the launcher's dependencies (`packaging/requirements.txt`), pytest,
-pytest-cov and ruff. Then `python -m pytest` and `ruff check .` must pass ([testing.md](testing.md)).
+pytest-cov and ruff. **Linux:** pip builds PyGObject (the window's GTK binding) from source — install its build
+dependencies first: `sudo apt install pkg-config libgirepository-2.0-dev libcairo2-dev` (Fedora: `pkgconf-pkg-config
+gobject-introspection-devel cairo-devel`). Then `python -m pytest` and `ruff check .` must pass ([testing.md](testing.md)).
 
 Example results (patient data, never committed): put `trio1.sqlite` (legacy column layout, three samples) and
 `pah2.vevat_annotated.sqlite` (new layout, one sample without an id) into a folder outside the repository and set
@@ -43,7 +45,7 @@ packaging\dist\ClinReport\python\python -I -m clinreport_desktop  # the window; 
 | `static/*`, `index.html` | `install_extension.py --no-deps`, reload the page | copy `modules/` over `packaging/dist/ClinReport/modules/`, restart the app (it re-syncs our modules on start) |
 | `wgclinreport.js` | same, **hard-reload** the viewer (Ctrl+F5) | same, hard-reload |
 | `route.py`, `clinreport_core/*`, templates, `*.yml` | same, **restart `oc gui`** (imported once) | same, restart the app |
-| `launchers/desktop/clinreport_desktop/*` | — | copy it over `packaging/dist/ClinReport/python/Lib/site-packages/clinreport_desktop` (macOS: `python/lib/python3.13/site-packages`), restart |
+| `launchers/desktop/clinreport_desktop/*` | — | copy it over `packaging/dist/ClinReport/python/Lib/site-packages/clinreport_desktop` (macOS, Linux: `python/lib/python3.13/site-packages`), restart |
 
 `install_extension.py` replaces the module folders entirely; settings and the lab's templates live in the conf dir and survive.
 

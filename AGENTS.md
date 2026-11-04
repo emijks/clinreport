@@ -11,6 +11,8 @@ Background and the reasons behind the rules: [docs/](docs/README.md), especially
 | `modules/webapps/clinreport/clinreport_core/` | report logic: `service.py` (handlers), `process.py` (report content), `database.py`, `templates.py`, `labels.py` | almost every feature |
 | `modules/webviewerwidgets/wgclinreport/` | Summary-tab button that opens the review page | the entry point in the viewer |
 | `launchers/desktop/clinreport_desktop/` | desktop control window (pywebview), starts OpenCRAVAT, updates | desktop-only behaviour |
+| `launchers/desktop/clinreport_desktop/linuxapp.py` | Linux: `--install` / `--uninstall [--purge]`, the menu entry, «Место на диске», the in-app update swap ([ADR 0016](docs/decisions/0016-linux-desktop.md)) | Linux install/update/removal |
+| `launchers/desktop/clinreport_desktop/isolation.py` | Linux: caches and temp files into the data folder (`XDG_CACHE_HOME`, `TMPDIR`, `PIP_CACHE_DIR`); the user's environment for the browser/file manager | anything that starts a program for the user |
 | `launchers/desktop/clinreport_desktop/environments.py` | other OpenCRAVAT installations: find (no side effects), judge, install our modules ([ADR 0015](docs/decisions/0015-run-on-an-existing-opencravat.md)) | «Окружения»; after a new OpenCRAVAT release (the matrix in `assess`) |
 | `launchers/desktop/clinreport_oc_compat.py` | patches that make OpenCRAVAT 3.2.3 run on Windows | after an OpenCRAVAT bump |
 | `launchers/desktop/clinreport_desktop/webview_compat.py` | patches that make pywebview 6.2.1 run on macOS 10.15 | after a pywebview bump |
@@ -30,6 +32,7 @@ python -m pytest --cov                               # coverage; target 80 % (py
 ruff check .                                         # lint (CI fails on it); config in pyproject.toml, modules/ruff.toml
 python packaging/build.py [--version X] [--package]  # bundle → packaging/dist/ClinReport (+ installer); ~5 min, cached
 packaging/dist/ClinReport/python/python -I -m clinreport_desktop [--headless | --selftest out.json | --quit]
+packaging/dist/ClinReport/clinreport [--install | --uninstall [--purge]]    # Linux (xvfb-run -a for a window without a display)
 python launchers/cli/cli.py RESULT.sqlite -m default|lpwgs|10x -o OUT --no-ru-annotations
 ```
 
@@ -46,7 +49,10 @@ Set `CLINREPORT_DATA_DIR=<tmp>` when running the desktop launcher so your real d
    patient data (git-ignored; tests skip without `CLINREPORT_EXAMPLES`).
 4. **User data never lives in program or module folders.** Settings and the lab's own templates: OpenCRAVAT conf dir
    (`clinreport.json`, `clinreport/templates/`). Desktop app: `%LOCALAPPDATA%\ClinReport` / `~/Library/Application
-   Support/ClinReport`. Module folders and `{app}` are replaced on every update.
+   Support/ClinReport` / `~/.local/share/clinreport` (Linux: the program is its `app/` subfolder, the only part an
+   update replaces). Module folders and `{app}` are replaced on every update. On Linux nothing else may be written outside
+   that folder (CI checks it): open programs for the user with `isolation.open_url` / `popen_for_user`, never
+   `webbrowser.open` or a bare `Popen`; temporary folders go to `paths.tmp_dir()`.
 5. **Installer invariants** (`packaging/windows/ClinReport.iss`, tested in `tests/packaging/test_installer.py`): never
    change `AppGuid`; only `{app}\python` and `{app}\modules` are deleted; the launcher mutex name matches
    `instance.MUTEX_NAME`.
@@ -67,6 +73,10 @@ Set `CLINREPORT_DATA_DIR=<tmp>` when running the desktop launcher so your real d
 - **Inno Setup fails on paths over 260 characters** ("The system cannot find the path specified" at "Updating icons"):
   build under a short path; `packaging/dist` is fine, a deep temp folder is not.
 - **Git Bash rewrites `/D…` and `/Q` switches** passed to `ISCC.exe` into paths: prefix with `MSYS_NO_PATHCONV=1`.
+- **Linux builds need PyGObject's build dependencies** (`pkg-config libgirepository-2.0-dev libcairo2-dev`), also for
+  `pip install -r requirements-dev.txt`: there are no Linux wheels. Users need only the desktop's WebKitGTK.
+- **Linux: a window self-test opens a real window** (and the `--headless` start opens the browser if «Открывать
+  OpenCRAVAT в браузере» is on); on a machine someone is using, prefer `CLINREPORT_DATA_DIR=<tmp>` and expect it.
 - `tests/` subfolders have no `__init__.py`; shared helpers live in `tests/helpers.py` (on pytest's `pythonpath`) —
   do not import one test module from another.
 - On macOS, `build.py --package` **moves** the bundle into `ClinReport.app`; test the bundle before packaging

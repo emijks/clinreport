@@ -8,7 +8,7 @@ One code base, three ways to run it:
 
 | | For whom | What you get |
 |---|---|---|
-| **Desktop app** | a clinician's own computer, Windows or macOS | an installer with OpenCRAVAT, Python and ClinReport inside; nothing else to install, no administrator rights |
+| **Desktop app** | a clinician's own computer, Windows, macOS or Linux | an installer with OpenCRAVAT, Python and ClinReport inside; nothing else to install, no administrator rights |
 | **Extension** | an existing OpenCRAVAT installation (e.g. a lab server) | `install_extension.py` adds the ClinReport modules to it |
 | **Command line** | batch jobs, scripts | `launchers/cli/cli.py` writes the same documents without the GUI |
 
@@ -22,10 +22,14 @@ One code base, three ways to run it:
 - **macOS:** `ClinReport-<version>-macos-arm64.dmg` (Apple Silicon, macOS 11+) or `…-macos-x64.dmg` (Intel, macOS 10.15+).
   Drag ClinReport to Applications, then remove the quarantine flag once per installed version (the app is not
   notarised): `xattr -dr com.apple.quarantine /Applications/ClinReport.app`.
+- **Linux x86-64** (Debian 13, Ubuntu 24.04+, Fedora 40+; needs the desktop's WebKitGTK): `ClinReport-<version>-linux-x64.tar.gz`.
+  `tar xzf …` then `./ClinReport/clinreport --install`. Everything — program, data, cache, temporary files — lives in
+  `~/.local/share/clinreport`; `clinreport --uninstall [--purge]` removes it again.
 
-**Update:** ClinReport shows «обновить до X» when a new version is out (Windows: one click; macOS: opens the release page),
-or install the new version over the old one. Settings, your own templates and OpenCRAVAT jobs are kept — they live in
-`%LOCALAPPDATA%\ClinReport` (Windows) or `~/Library/Application Support/ClinReport` (macOS), never in the program folder.
+**Update:** ClinReport shows «обновить до X» when a new version is out (Windows and Linux: one click; macOS: opens the
+release page), or install the new version over the old one. Settings, your own templates and OpenCRAVAT jobs are kept —
+they live in `%LOCALAPPDATA%\ClinReport` (Windows), `~/Library/Application Support/ClinReport` (macOS) or
+`~/.local/share/clinreport` (Linux, next to `app/`), never in the program folder.
 
 **Extension** — with the Python that runs your OpenCRAVAT (≥ 2.2.9; tested with 3.2.3):
 
