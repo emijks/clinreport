@@ -96,8 +96,8 @@ Body: `{"context": {…}, "kind": "default" | "10x" | "screening", "template": "
 "format": "docx" | "html" | "pdf", "filename": "…"}`.
 `template` is a built-in id (`DZM`, `FND`, `10x`, `screening`) or a custom one (`u-…`, see [Templates](#templates));
 default by kind. `format` defaults to `docx` and must be one of the template's `formats`. Unknown templates, a template
-of another kind, a format the template does not make → `400`. A `screening` report that fails its checks → `400` with
-`"Документ не собран:\n<one problem per line>"`. `filename` is sanitised (basename, `<>:"/\|?*` → `_`, the format's
+of another kind, a format the template does not make → `400`. Empty required fields of a `screening` report print as
+`_` (ask first: `report_check`). `filename` is sanitised (basename, `<>:"/\|?*` → `_`, the format's
 extension replaces `.docx`/`.html`/`.pdf`).
 
 | `format` | Response body | `Content-Type` |
@@ -105,11 +105,17 @@ extension replaces `.docx`/`.html`/`.pdf`).
 | `docx` | Word document | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` |
 | `html` | one self-contained HTML file (CSS, fonts, images inlined; CSP) | `text/html; charset=utf-8` |
 | `pdf`, `pdf_mode` `server` | PDF (WeasyPrint) | `application/pdf` |
-| `pdf`, `pdf_mode` `browser` | the HTML + Paged.js + a print call, header `X-ClinReport-Print: 1` — the page opens it in a new tab | `text/html; charset=utf-8` |
+| `pdf`, `pdf_mode` `browser` | the HTML + Paged.js + a print call, header `X-ClinReport-Print: 1` — the page prints it from a hidden frame | `text/html; charset=utf-8` |
 
 `Content-Disposition: attachment; filename="report.<ext>"; filename*=UTF-8''<percent-encoded name>`.
 The context is rendered as sent (edits included). Word: `variation` and `zygosity` strings become docxtpl `RichText`
 (`\n` = a line break, `templates.richtextify`); screening rich text (`<i>` …) becomes styled runs.
+
+## `POST report_check`
+
+Body: `{"context": {…}, "kind": "…"}` → `{"missing": ["Участник: Пол, Средняя глубина прочтения", …]}`: what a
+`screening` report still lacks (empty fields print as `_`); `[]` for other kinds. The page calls it before saving when
+the layout has `check_missing`.
 
 ## `POST upload`
 

@@ -234,7 +234,6 @@ def check_context(kind: str) -> dict:
         from .screening import prepare
 
         context = prepare(context, data_dir(kind))
-        context.pop('warnings', None)
     return context
 
 

@@ -26,7 +26,6 @@ from . import templates as tpl
 from .clinreport import DEFAULT_TEMPLATES, ClinReport
 from .database import Database, get_ru_annotations
 from .labels import LAYOUTS, context_to_payload_records
-from .screening import ReportProblem
 
 DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
 SETTINGS_FILENAME = 'clinreport.json'  # local mode: the user's settings
@@ -416,6 +415,19 @@ def _safe_filename(name: str, default: str, extension: str = '.docx') -> str:
     return (name or os.path.splitext(default)[0]) + extension
 
 
+def report_check(params: dict, caller: Caller = LOCAL) -> dict:
+    """Body: {context, kind}. {"missing": [lines]}: what is still empty — the page asks before saving, and the document
+    prints «_» there. Kinds without such fields: always empty."""
+    context = params.get('context')
+    if not isinstance(context, dict):
+        raise ClientError('Нет данных для формирования документа.')
+    if params.get('kind') == 'screening':
+        from .screening import missing
+
+        return {'missing': missing(context)}
+    return {'missing': []}
+
+
 def render(params: dict, caller: Caller = LOCAL) -> FileResult:
     """Body: {context, kind, template, format: docx|html|pdf (default docx), filename}. A PDF in 'browser' mode
     (layouts()['…']['pdf_mode']) comes back as printable HTML with the header X-ClinReport-Print: 1."""
@@ -433,8 +445,6 @@ def render(params: dict, caller: Caller = LOCAL) -> FileResult:
         raise ClientError(f'Шаблон «{item["title"]}» не делает документ в формате {fmt.upper()}.')
     try:
         document = output.render(context, kind, store.sources(template), fmt)
-    except ReportProblem as e:
-        raise ClientError('Документ не собран:\n' + '\n'.join(e.problems)) from None
     except output.PdfUnavailable as e:
         raise ClientError(f'PDF не получился: {e}') from None
     name = _safe_filename(params.get('filename'), 'report.docx', document.extension)

@@ -139,6 +139,7 @@ LAYOUTS['screening']['lists'] = [
      'hint': 'Пусто — в отчёт попадут стандартные рекомендации шаблона.'},
 ]
 LAYOUTS['screening']['subtitle'] = 'Профилактический ДНК-скрининг: варианты с Note 1 и 2'
+LAYOUTS['screening']['check_missing'] = True  # before saving: report_check lists empty fields («_» in the document)
 for _layout_ in LAYOUTS.values():
     _layout_.setdefault('add_rows', [])
     _layout_.setdefault('lists', [])

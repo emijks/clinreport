@@ -229,8 +229,8 @@ def screening_docx_namespace(namespace: dict) -> dict:
 
 
 def namespace_for(kind: str, context: dict) -> dict:
-    """What the templates of a report kind read. 'screening' checks and prepares (screening.ReportProblem on errors);
-    the other kinds read the context as it is."""
+    """What the templates of a report kind read: 'screening' → screening.prepare() («_» for empty fields, numbered
+    citations); the other kinds read the context as it is."""
     if kind == 'screening':
         from . import screening, templates
 

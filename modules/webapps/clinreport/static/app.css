@@ -221,3 +221,4 @@ dialog.wide { width: min(880px, calc(100vw - 32px)); }
 .paragraph-row textarea { flex: 1; min-height: 3.2em; }
 .section-head .btn.small { margin-left: auto; }
 #error-message { white-space: pre-line; }
+#missing-list { margin: 0 0 14px; padding-left: 20px; line-height: 1.6; }

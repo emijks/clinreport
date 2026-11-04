@@ -46,7 +46,7 @@ context (from the page) ──► output.namespace_for(kind)   screening: screen
 | genlab server (Docker) | `weasyprint` package | `pip install weasyprint==70.0` + `apt-get install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0` |
 | Linux desktop app | `weasyprint` package in the bundle | Pango comes with the desktop |
 | Windows desktop app | `weasyprint-exe` | WeasyPrint's official Windows build in `<bundle>/weasyprint/` (stack.toml `[weasyprint_windows]`); the launcher sets `CLINREPORT_WEASYPRINT` |
-| macOS desktop app, anything without Pango | `browser` | the server returns the HTML with Paged.js + a print call (`X-ClinReport-Print: 1`); the page opens it in a new tab, the user saves the PDF from the print dialog |
+| macOS desktop app, anything without Pango | `browser` | the server returns the HTML with Paged.js + a print call (`X-ClinReport-Print: 1`); the page lays it out in a hidden frame, the print dialog opens, the user saves the PDF |
 
 `CLINREPORT_PDF_ENGINE=browser` forces the browser path (tests, support). One WeasyPrint release everywhere
 (`test_weasyprint_is_one_release_everywhere`); the browser path is checked to print the same pages (below).
@@ -102,7 +102,7 @@ Built in for everyone: put `templates/docx/<ID>.docx`, add `('<ID>', '<title>', 
 |---|---|
 | Context builder: `clinreport_core/<kind>.py` `build_context(processor)` — **strings only** (the page edits them) | `screening.build_context`: Notes 1/2, structured fields from the raw OpenCRAVAT row |
 | Hook it: `ClinReport.build_context(sample, '<kind>')`, a `mode` in `service.MODES` / `process()`, a button in `index.html` + `processResult('<mode>')` in `app.js` | «Обработать как скрининг» |
-| Checks + namespace: `prepare(context, data_dir)` raising `ReportProblem([...])` (Russian, shown to the user) | allowed zygosity/inheritance/classification, reads, placeholders `_`, citations |
+| Empty fields + namespace: `missing(context)` (Russian lines; `report_check`, layout `check_missing`) and `prepare(context, data_dir)` — never refuses, prints `_` for empty fields | filled values printed as written |
 | `output.namespace_for(kind)`; Word needs rich text as `RichText` (`screening_docx_namespace`) | |
 | `templates.KINDS`, `DEFAULT_FOR_KIND`, `example_context(kind)` (one row in every list; `check_context` makes the namespace the templates read) | `screening.EXAMPLE` |
 | Page layout: `labels.LAYOUTS['<kind>']` — `common`, `tables`; `add_rows` (tables the user extends), `lists` (paragraph lists), `subtitle`; `service.REPORT_NAMES[kind]` (file name) | variants, references, interpretation, recommendations |
@@ -122,6 +122,6 @@ CLINREPORT_PDF_ENGINE=browser … --headless                          # then «�
 ```
 
 For the browser path, open the review page in Chrome/Edge/Yandex (Firefox works; Safari is the least tested), choose PDF,
-«Сохранить как…»: a tab opens, Paged.js lays out the pages, the print dialog appears — compare the pages with the
+«Сохранить как…»: Paged.js lays out the pages in a hidden frame, the print dialog appears — compare the pages with the
 WeasyPrint PDF (page count, contents numbers, headers). After a Paged.js update, also check that the tab shows no CSP
 errors in the console (`vendor/pagedjs/README.md`).

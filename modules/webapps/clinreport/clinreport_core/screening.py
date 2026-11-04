@@ -14,6 +14,9 @@ The context (POST process → the review page edits it → render) holds strings
 
 prepare() turns it into what the templates read (every format: html, pdf, docx); the template's data/ folder
 (study.json, genes_acmg.json) supplies the fixed texts. Variants: Notes 1 (P) and 2 (LP) of the sample.
+
+Nothing the clinician fills in is refused: a value is printed as written. missing() lists the empty required fields
+(and [@key] citations without a source) so the page can warn before saving; prepare() prints «_» for them.
 """
 
 from __future__ import annotations
@@ -25,7 +28,6 @@ from datetime import date
 from pathlib import Path
 
 NOTES = {'1': 'патогенный', '2': 'вероятно патогенный'}
-ZYGOSITY = ('гетерозигота', 'гомозигота', 'гемизигота', 'компаунд-гетерозигота')
 INHERITANCE = {
     'АД': 'аутосомно-доминантный',
     'АР': 'аутосомно-рецессивный',
@@ -33,25 +35,18 @@ INHERITANCE = {
     'ХР': 'Х-сцепленный рецессивный',
     'ХС': 'Х-сцепленный',
 }
-CLASSIFICATION = ('патогенный', 'вероятно патогенный')
-REQUIRED_PATIENT = (('participant', 'участник исследования'), ('sex', 'пол'), ('date', 'дата исследования'),
-                    ('mean_depth', 'средняя глубина прочтения'))
-REQUIRED_VARIANT = ('gene', 'disease', 'position', 'hgvs_c', 'zygosity', 'inheritance', 'reads_alt', 'reads_total')
+REQUIRED_PATIENT = (('participant', 'Участник исследования'), ('sex', 'Пол'), ('date', 'Дата исследования'),
+                    ('mean_depth', 'Средняя глубина прочтения'))
+REQUIRED_VARIANT = (('gene', 'ген'), ('disease', 'заболевание'), ('position', 'позиция'), ('hgvs_c', 'HGVS c.'),
+                    ('zygosity', 'зиготность'), ('inheritance', 'тип наследования'), ('reads_alt', 'прочтений альт.'),
+                    ('reads_total', 'прочтений всего'))
 VARIANT_FIELDS = ('gene', 'disease', 'omim', 'position', 'hgvs_c', 'hgvs_p', 'classification', 'zygosity',
                   'inheritance', 'frequency', 'reads_alt', 'reads_total')
-PLACEHOLDER = '_'  # what the clinician still has to fill in (as in the other reports)
+PLACEHOLDER = '_'  # printed for an empty required field (the page warns first)
 
 _ZYGOSITY_FROM_OC = {'het': 'гетерозигота', 'hom': 'гомозигота', 'hemi': 'гемизигота'}
 _INHERITANCE_FROM_OC = {'AD': 'АД', 'AR': 'АР', 'XD': 'ХД', 'XR': 'ХР', 'XL': 'ХС'}
 _MIM = re.compile(r'(?<!\d)(\d{6})(?!\d)')
-
-
-class ReportProblem(ValueError):
-    """The report cannot be made; .problems lists why (Russian, shown on the page)."""
-
-    def __init__(self, problems):
-        super().__init__('\n'.join(problems))
-        self.problems = list(problems)
 
 
 # --- the context, from an OpenCRAVAT result ---
@@ -68,10 +63,10 @@ def build_context(processor) -> dict:
     return {
         'patient': {
             'id': processor.sample_name,
-            'participant': PLACEHOLDER,
-            'sex': PLACEHOLDER,
+            'participant': '',
+            'sex': '',
             'date': date.today().strftime('%d.%m.%Y'),
-            'mean_depth': PLACEHOLDER + '×',
+            'mean_depth': '',
         },
         'variants': variants,
         'interpretation': paragraphs,
@@ -103,16 +98,16 @@ def _variant_row(processor, variant: dict, note: str) -> dict:
         'hgvs_c': f'{transcript}:{hgvsc}' if transcript and hgvsc else hgvsc,
         'hgvs_p': hgvsp,
         'classification': NOTES[note],
-        'zygosity': _ZYGOSITY_FROM_OC.get(zygosity, zygosity or PLACEHOLDER),
-        'inheritance': inheritance or PLACEHOLDER,
+        'zygosity': _ZYGOSITY_FROM_OC.get(zygosity, zygosity),
+        'inheritance': inheritance,
         'frequency': fmt_freq(agg['AF'] or None),  # 0 = not seen in gnomAD: «—», as upstream
-        'reads_alt': str(variant['tagsampler_new__ad'] or PLACEHOLDER),
-        'reads_total': str(variant['tagsampler_new__dp'] or PLACEHOLDER),
+        'reads_alt': str(variant['tagsampler_new__ad'] or ''),
+        'reads_total': str(variant['tagsampler_new__dp'] or ''),
     }
 
 
 def _inheritance(value) -> str:
-    """One code (АД, АР, …) or '' when OpenCRAVAT gives none or several — the clinician decides then."""
+    """One code (АД, АР, …) or '' when OpenCRAVAT gives none or several — the clinician fills it in then."""
     codes = {_INHERITANCE_FROM_OC.get(part.strip().upper(), part.strip()) for part in str(value or '').split(',')}
     codes.discard('')
     return codes.pop() if len(codes) == 1 and next(iter(codes)) in INHERITANCE else ''
@@ -153,52 +148,32 @@ def fmt_freq(value) -> str:
     return f"{mantissa.replace('.', ',')}×10{str(int(exponent)).translate(superscript)}"
 
 
-# --- checks (a typo in a clinical report must stop it, not print) ---
+# --- what is still empty (the page warns; the document prints «_») ---
 
 
-def validate(context: dict, acmg_genes=()) -> tuple:
-    """(errors, warnings) in Russian. Any error: no document."""
-    errors, warnings = [], []
+def missing(context: dict) -> list:
+    """Russian lines naming every empty required field and every [@key] without a source. Never blocks a document."""
+    found = []
     patient = context.get('patient') or {}
-    for key, label in REQUIRED_PATIENT:
-        if _missing(patient.get(key)):
-            errors.append(f'Не заполнено поле «{label}».')
-    variants = context.get('variants') or []
-    for i, v in enumerate(variants, start=1):
-        tag = f'Вариант {i} ({v.get("gene") or "?"})'
-        for key in REQUIRED_VARIANT:
-            if _missing(v.get(key)):
-                errors.append(f'{tag}: не заполнено поле «{key}».')
-        if v.get('zygosity') and not _missing(v['zygosity']) and v['zygosity'] not in ZYGOSITY:
-            errors.append(f'{tag}: зиготность «{v["zygosity"]}» — допустимо: {", ".join(ZYGOSITY)}.')
-        if v.get('inheritance') and not _missing(v['inheritance']) and v['inheritance'] not in INHERITANCE:
-            errors.append(f'{tag}: тип наследования «{v["inheritance"]}» — допустимо: {", ".join(INHERITANCE)}.')
-        if v.get('classification') and v['classification'] not in CLASSIFICATION:
-            errors.append(f'{tag}: классификация «{v["classification"]}» — допустимо: {", ".join(CLASSIFICATION)}.')
-        try:
-            if int(v.get('reads_alt')) > int(v.get('reads_total')):
-                errors.append(f'{tag}: альтернативных прочтений больше, чем всего.')
-        except (TypeError, ValueError):
-            if not _missing(v.get('reads_alt')) and not _missing(v.get('reads_total')):
-                errors.append(f'{tag}: число прочтений должно быть целым.')
-        if acmg_genes and v.get('gene') and v['gene'] not in acmg_genes:
-            warnings.append(f'{tag}: ген {v["gene"]} не входит в список ACMG.')
-    paragraphs = [p for p in context.get('interpretation') or [] if str(p).strip()]
-    if variants and not paragraphs:
-        errors.append('Есть варианты, но нет интерпретации.')
-    for p in paragraphs:
-        if PLACEHOLDER in re.sub(r'\[@[^\]]*\]', '', p).split():
-            errors.append('В интерпретации остался пропуск «_»: заполните его или удалите.')
-            break
-    keys = [str(r.get('key') or '').strip() for r in context.get('references') or []]
-    for key in {k for k in keys if keys.count(k) > 1 and k}:
-        errors.append(f'Источник [@{key}] указан дважды.')
-    return errors, warnings
+    empty = [label for key, label in REQUIRED_PATIENT if _empty(patient.get(key))]
+    if empty:
+        found.append('Участник: ' + ', '.join(empty))
+    for i, v in enumerate(context.get('variants') or [], start=1):
+        empty = [label for key, label in REQUIRED_VARIANT if _empty(v.get(key))]
+        if empty:
+            found.append(f'Вариант {i} ({v.get("gene") or "?"}): ' + ', '.join(empty))
+    if (context.get('variants') or []) and not [p for p in context.get('interpretation') or [] if str(p).strip()]:
+        found.append('Интерпретация вариантов пуста')
+    keys = {str(r.get('key') or '').strip() for r in context.get('references') or []}
+    texts = [str(t) for t in (context.get('interpretation') or []) + (context.get('recommendations') or [])]
+    unknown = sorted({k.strip().lstrip('@').strip() for t in texts for m in _CITE.finditer(t) for k in m.group(1).split(';')} - keys)
+    if unknown:
+        found.append('Нет источника для ссылок ' + ', '.join(f'[@{k}]' for k in unknown) + ' — останутся в тексте как есть')
+    return found
 
 
-def _missing(value) -> bool:
-    text = str(value if value is not None else '').strip()
-    return not text or text.strip('_×x ') == ''
+def _empty(value) -> bool:
+    return not str(value if value is not None else '').strip()
 
 
 # --- citations: [@key] → [12], numbered after the template's fixed references ---
@@ -218,14 +193,15 @@ def _compress(numbers: list) -> str:
 
 
 def resolve_citations(texts: list, first_number: int, extra: dict) -> tuple:
-    """(texts with numbers, extra sources in the order first cited, errors)."""
+    """(texts with numbers, extra sources in the order first cited, unknown keys). A citation without a source stays
+    as written."""
     errors, numbers, cited = [], {}, []
 
     def replace(match):
         found = []
         for key in (k.strip().lstrip('@').strip() for k in match.group(1).split(';')):
             if key not in extra:
-                errors.append(f'Ссылка [@{key}] есть в тексте, но нет в списке источников.')
+                errors.append(key)
                 continue
             if key not in numbers:
                 cited.append(extra[key])
@@ -248,23 +224,32 @@ def load_data(data_dir) -> tuple:
 
 
 def prepare(context: dict, data_dir) -> dict:
-    """The namespace every screening template gets. Raises ReportProblem when validate() finds errors."""
+    """The namespace every screening template gets: values as written, «_» for an empty required field, citations
+    numbered. Never refuses (missing() is what the page shows before saving)."""
     study, groups = load_data(data_dir)
     acmg_genes = sorted({g for group in groups for g in group['genes']})
-    errors, warnings = validate(context, set(acmg_genes))
-    variants = [{k: str(v.get(k) if v.get(k) is not None else '') for k in VARIANT_FIELDS} for v in context.get('variants') or []]
+    patient = {k: str(v if v is not None else '') for k, v in (context.get('patient') or {}).items()}
+    for key, _label in REQUIRED_PATIENT:
+        if _empty(patient.get(key)):
+            patient[key] = PLACEHOLDER
+    variants = []
+    for v in context.get('variants') or []:
+        row = {k: str(v.get(k) if v.get(k) is not None else '').strip() for k in VARIANT_FIELDS}
+        for key, _label in REQUIRED_VARIANT:
+            if not row[key]:
+                row[key] = PLACEHOLDER
+        variants.append(row)
     interpretation = [str(p) for p in context.get('interpretation') or [] if str(p).strip()] if variants else []
+    if variants and not interpretation:
+        interpretation = [PLACEHOLDER]
     recommendations = [str(r) for r in context.get('recommendations') or [] if str(r).strip()]
     recommendations = recommendations or list(study['default_recommendations'])
     extra = {str(r.get('key') or '').strip(): str(r.get('text') or '') for r in context.get('references') or []}
     extra.pop('', None)
-    texts, cited, citation_errors = resolve_citations(interpretation + recommendations, len(study['references']) + 1, extra)
-    errors += citation_errors
-    if errors:
-        raise ReportProblem(errors)
+    texts, cited, _unknown = resolve_citations(interpretation + recommendations, len(study['references']) + 1, extra)
     used = [k for k in INHERITANCE if any(v['inheritance'] == k for v in variants)]
     return {
-        'patient': dict(context.get('patient') or {}),
+        'patient': patient,
         'variants': variants,
         'interpretation': texts[: len(interpretation)],
         'recommendations': texts[len(interpretation):],
@@ -273,7 +258,6 @@ def prepare(context: dict, data_dir) -> dict:
         'gene_groups': groups,
         'acmg_genes': acmg_genes,
         'inheritance_legend': '; '.join(f'{k} – {INHERITANCE[k]}' for k in used) + '.' if used else '',
-        'warnings': warnings,
     }
 
 

@@ -60,7 +60,7 @@ def test_context_from_notes_1_and_2(trio_db):
     assert all(isinstance(x, str) for row in context['variants'] for x in row.values()), 'the page edits strings'
     assert '<i>UBQLN4</i>' in context['interpretation'][0] and '&gt;' not in context['interpretation'][0]
     assert 'фенотипа пациента' not in ' '.join(context['interpretation']), 'a screening participant has no diagnosis'
-    assert context['patient']['participant'] == '_', 'left for the clinician'
+    assert context['patient']['participant'] == '' and context['patient']['date'], 'left empty for the clinician'
 
 
 @pytest.mark.parametrize(('value', 'code'), [('AR', 'АР'), ('AD', 'АД'), ('XL', 'ХС'), ('AD,AR', ''), ('', ''), (None, '')])
@@ -74,38 +74,46 @@ def test_frequency_format(value, text):
     assert screening.fmt_freq(value) == text
 
 
-# --- checks ---
+# --- empty fields: listed before saving, printed as «_»; anything filled in is printed as written ---
 
 
-def test_the_example_passes():
-    assert screening.validate(screening.EXAMPLE) == ([], [])
+def test_the_example_misses_nothing():
+    assert screening.missing(screening.EXAMPLE) == []
 
 
-@pytest.mark.parametrize(('change', 'problem'), [
-    (lambda c: c['patient'].update(participant='_'), 'участник исследования'),
-    (lambda c: c['patient'].update(mean_depth='_×'), 'средняя глубина'),
-    (lambda c: c['variants'][0].update(zygosity='гомо'), 'зиготность «гомо»'),
-    (lambda c: c['variants'][0].update(inheritance='AR'), 'тип наследования «AR»'),
-    (lambda c: c['variants'][0].update(classification='VUS'), 'классификация «VUS»'),
-    (lambda c: c['variants'][0].update(reads_alt='39'), 'альтернативных прочтений больше'),
-    (lambda c: c['variants'][0].update(reads_alt='много'), 'целым'),
-    (lambda c: c.update(interpretation=[]), 'нет интерпретации'),
-    (lambda c: c.update(interpretation=['Вариант ранее _ описан.']), 'пропуск «_»'),
-    (lambda c: c['references'].append({'key': 'feder1997', 'text': 'x'}), 'дважды'),
-])
-def test_a_clinical_typo_stops_the_report(change, problem):
-    context = example()
-    change(context)
-    errors, _warnings = screening.validate(context)
-    assert any(problem in e for e in errors), errors
-    with pytest.raises(screening.ReportProblem):
-        screening.prepare(context, DATA)
+def test_missing_names_every_empty_field():
+    context = example(participant='', sex=' ', mean_depth='')
+    context['variants'][0].update(inheritance='', reads_total='')
+    context['interpretation'] = ['Текст [@nosuch]']
+    assert screening.missing(context) == [
+        'Участник: Участник исследования, Пол, Средняя глубина прочтения',
+        'Вариант 1 (HFE): тип наследования, прочтений всего',
+        'Нет источника для ссылок [@nosuch] — останутся в тексте как есть',
+    ]
+    context['interpretation'] = []
+    assert 'Интерпретация вариантов пуста' in screening.missing(context)
 
 
-def test_a_gene_outside_acmg_only_warns():
-    context = example()
-    context['variants'][0]['gene'] = 'UBQLN4'
-    assert screening.prepare(context, DATA)['warnings'] == ['Вариант 1 (UBQLN4): ген UBQLN4 не входит в список ACMG.']
+def test_empty_fields_print_an_underscore_and_never_stop_the_report():
+    context = example(participant='', mean_depth='')
+    context['variants'][0].update(inheritance='')
+    context['interpretation'] = []
+    ns = screening.prepare(context, DATA)
+    assert ns['patient']['participant'] == '_' and ns['patient']['mean_depth'] == '_'
+    assert ns['variants'][0]['inheritance'] == '_' and ns['interpretation'] == ['_']
+
+
+def test_whatever_is_filled_in_is_printed_as_written():
+    """No value checks: a filled field always goes into the document (the clinician's decision)."""
+    context = example(sex='qweqe')
+    context['variants'][0].update(zygosity='гомо', inheritance='AR', reads_alt='39', classification='VUS')
+    context['interpretation'] = ['Вариант ранее _ описан [@unknown].']
+    ns = screening.prepare(context, DATA)
+    assert ns['patient']['sex'] == 'qweqe'
+    assert (ns['variants'][0]['zygosity'], ns['variants'][0]['inheritance'], ns['variants'][0]['classification']) == ('гомо', 'AR', 'VUS')
+    assert ns['interpretation'] == ['Вариант ранее _ описан [@unknown].'], 'a citation without a source stays as written'
+    page = output.render(context, 'screening', SOURCES, 'html').data.decode('utf-8')
+    assert 'qweqe' in page and 'гомо' in page
 
 
 def test_no_variants_needs_no_interpretation_and_prints_none():
@@ -122,7 +130,7 @@ def test_citations_are_numbered_after_the_fixed_list_in_order_of_first_use():
     texts, cited, errors = screening.resolve_citations(
         ['a [@b] c [@a; @b]', 'd [@c]'], 12, {'a': 'A', 'b': 'B', 'c': 'C', 'unused': 'U'})
     assert texts == ['a [12] c [12, 13]', 'd [14]'] and cited == ['B', 'A', 'C'] and errors == []
-    assert screening.resolve_citations(['[@x]'], 12, {})[2] == ['Ссылка [@x] есть в тексте, но нет в списке источников.']
+    assert screening.resolve_citations(['[@x]'], 12, {}) == (['[@x]'], [], ['x'])
 
 
 def test_compress():
@@ -258,10 +266,13 @@ def test_service_refuses_what_a_template_cannot_make(service):
         service.render({'context': example(), 'kind': 'default', 'template': 'screening', 'format': 'html'})
 
 
-def test_service_lists_the_problems(service):
-    with pytest.raises(service.ClientError) as caught:
-        service.render({'context': example(participant=''), 'kind': 'screening', 'template': 'screening', 'format': 'html'})
-    assert str(caught.value).startswith('Документ не собран:\n') and 'участник исследования' in str(caught.value)
+def test_report_check_before_saving(service):
+    assert service.report_check({'context': example(), 'kind': 'screening'}) == {'missing': []}
+    assert service.report_check({'context': example(participant=''), 'kind': 'screening'}) == {
+        'missing': ['Участник: Участник исследования']}
+    assert service.report_check({'context': {}, 'kind': 'default'}) == {'missing': []}
+    result = service.render({'context': example(participant=''), 'kind': 'screening', 'template': 'screening', 'format': 'html'})
+    assert 'Участник исследования:</span> _' in result.data.decode('utf-8'), 'saved anyway, with «_»'
 
 
 def test_clinbio_gets_word_whatever_format_was_chosen(service, monkeypatch):
@@ -283,7 +294,7 @@ def test_process_screening_and_layout(service, trio_db, engine):
     assert result['reports'][0]['name'] == 'Отчёт ДНК-скрининга (sample1)'
     layout = result['layouts']['screening']
     assert layout['templates'] == [{'id': 'screening', 'title': 'Профилактический ДНК-скрининг', 'formats': ['pdf', 'html', 'docx']}]
-    assert layout['pdf_mode'] == 'server' and layout['add_rows'] == ['variants', 'references']
+    assert layout['pdf_mode'] == 'server' and layout['add_rows'] == ['variants', 'references'] and layout['check_missing']
     assert [x['key'] for x in layout['lists']] == ['interpretation', 'recommendations']
     assert result['layouts']['default']['templates'][0]['formats'] == ['docx']
 

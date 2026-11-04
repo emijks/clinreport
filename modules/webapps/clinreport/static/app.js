@@ -310,7 +310,27 @@ function renderPayload(report, filename) {
   return { context: report.context, kind: report.kind, template: report.template || null, format: report.format || 'docx', filename };
 }
 
+// Empty fields do not stop a document (it prints «_» there), but the user sees them first. The dialog's button is a
+// fresh click, so the save picker / print tab opened after it still count as the user's gesture.
+function confirmMissing(lines) {
+  if (!lines.length) return Promise.resolve(true);
+  const dialog = $('missing-dialog');
+  $('missing-list').replaceChildren(...lines.map((line) => el('li', {}, line)));
+  return new Promise((resolve) => {
+    const done = (answer) => () => { dialog.close(); resolve(answer); };
+    $('missing-continue').onclick = done(true);
+    $('missing-cancel').onclick = done(false);
+    dialog.oncancel = done(false);  // Esc
+    dialog.showModal();
+    $('missing-continue').focus();
+  });
+}
+
 async function saveReport(report, layout) {
+  if (layout.check_missing) {
+    const { missing } = await postJSON('report_check', { context: report.context, kind: report.kind });
+    if (!await confirmMissing(missing)) return;
+  }
   const format = report.format || 'docx';
   if (format === 'pdf' && layout.pdf_mode === 'browser') {
     await printReport(report);
@@ -340,21 +360,22 @@ async function saveReport(report, layout) {
   }
 }
 
-// No PDF engine on this computer (the macOS desktop app): the server sends the report as HTML with Paged.js, which lays
-// it out into pages in a new tab and opens the print dialog; the user picks «Сохранить как PDF».
+// No PDF engine on this computer (the macOS desktop app): the server sends the report as HTML with Paged.js. It is laid
+// out into pages in a hidden frame of this page, which then opens the print dialog; the user picks «Сохранить как PDF».
+// A frame, not a new tab: no popup blocker (Safari blocks a window opened after a request), the dialog stays here.
 async function printReport(report) {
-  const tab = window.open('', '_blank');  // now, while the click still counts: a window opened later is blocked
-  if (tab) tab.document.write('<p style="font:16px sans-serif;padding:24px">Готовлю отчёт к печати…</p>');
-  try {
-    const response = await request('POST', 'render', renderPayload(report, reportFilename(report)));
-    const url = URL.createObjectURL(await response.blob());
-    if (tab) tab.location = url; else window.open(url, '_blank');
-    setTimeout(() => URL.revokeObjectURL(url), 120000);
-  } catch (error) {
-    if (tab) tab.close();
-    throw error;
-  }
-  notify('ok', 'Отчёт открыт в новой вкладке: в окне печати выберите «Сохранить как PDF».', { sticky: true });
+  const response = await request('POST', 'render', renderPayload(report, reportFilename(report)));
+  const url = URL.createObjectURL(await response.blob());
+  const old = $('print-frame');
+  if (old) old.remove();
+  // laid out off screen at page width: Paged.js needs real layout (display:none would give it nothing to measure)
+  const frame = el('iframe', { id: 'print-frame', title: 'Печать отчёта', src: url,
+    style: 'position:fixed;left:-10000px;top:0;width:210mm;height:297mm;border:0' });
+  frame.addEventListener('load', () => {
+    frame.contentWindow.addEventListener('afterprint', () => { frame.remove(); URL.revokeObjectURL(url); });
+  }, { once: true });
+  document.body.append(frame);
+  notify('ok', 'Готовлю отчёт к печати: в окне печати выберите «Сохранить как PDF».');
 }
 
 async function uploadReport(report, { quiet = false } = {}) {

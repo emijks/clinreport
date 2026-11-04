@@ -139,11 +139,11 @@ Server-side post-processing in `service._report`: a sample number of literally `
 ### Screening
 
 «Профилактический ДНК-скрининг» (`clinreport_core/screening.py`, `mode: "screening"`), one per sample, from
-**Notes 1 and 2** only. Strings throughout; `_` marks what the clinician must fill (the checks refuse it).
+**Notes 1 and 2** only. Strings throughout; the patient fields start empty (the date is today's).
 
 ```json
 {
-  "patient": {"id": "sample1", "participant": "_", "sex": "_", "date": "05.11.2026", "mean_depth": "_×"},
+  "patient": {"id": "sample1", "participant": "", "sex": "", "date": "05.11.2026", "mean_depth": ""},
   "variants": [{"gene": "UBQLN4", "disease": "Immunodeficiency due to defect in MAPBP-interacting protein",
                 "omim": "610798", "position": "chr1:156053689 T>G", "hgvs_c": "NM_020131.5:c.13A>C",
                 "hgvs_p": "p.Ser5Arg", "classification": "патогенный", "zygosity": "гомозигота", "inheritance": "АР",
@@ -156,7 +156,7 @@ Server-side post-processing in `service._report`: a sample number of literally `
 
 | Field | Built from |
 |---|---|
-| `disease`, `inheritance` | the Russian sheet `secondary` (`Disease/Phentyope`, `Inheritance`) for the gene, else `vep_omim_pheno__pheno` (text before the MIM number) / `vep_omim_pheno__inher` — one code `АД АР ХД ХР ХС`, empty (→ `_`) when OpenCRAVAT gives none or several |
+| `disease`, `inheritance` | the Russian sheet `secondary` (`Disease/Phentyope`, `Inheritance`) for the gene, else `vep_omim_pheno__pheno` (text before the MIM number) / `vep_omim_pheno__inher` — one code `АД АР ХД ХР ХС`, empty when OpenCRAVAT gives none or several |
 | `omim` | the 6-digit MIM number in `vep_omim_pheno__pheno` (else in `vep_omim_pheno__id`) |
 | `position`, `hgvs_c`, `hgvs_p` | `chrom:pos ref>alt`; `<refseq or transcript>:<hgvsc>`; `vep_csq__hgvsp` |
 | `classification` | Note 1 → `патогенный`, 2 → `вероятно патогенный` |
@@ -166,10 +166,11 @@ Server-side post-processing in `service._report`: a sample number of literally `
 | `interpretation` | the default report's narrative of the variant as one paragraph, without the phenotype sentence; `<i>gene</i>` |
 | `recommendations` | empty → the template's `study.json` `default_recommendations` |
 
-**Checks** (`screening.validate`, before any format): patient fields filled; per variant the required fields,
-zygosity ∈ {гетерозигота, гомозигота, гемизигота, компаунд-гетерозигота}, inheritance ∈ {АД, АР, ХД, ХР, ХС},
-classification ∈ {патогенный, вероятно патогенный}, integer reads with alt ≤ total; an interpretation when there are
-variants and no `_` left in it; unique reference keys; every `[@key]` defined. A gene outside the ACMG list only warns.
+**Nothing is refused.** A filled field is printed as written. `screening.missing()` (`POST report_check`) lists the
+empty required fields — participant, sex, date, mean depth; per variant gene, disease, position, HGVS c., zygosity,
+inheritance, reads; an empty interpretation when there are variants — and `[@key]`s without a source. The page shows
+them in a dialog before saving («Сохранить с «_»» / «Вернуться и заполнить»); `prepare()` prints `_` for each empty
+field and leaves an unknown `[@key]` as written.
 
 ## 4. Template variables (docxtpl / Jinja)
 

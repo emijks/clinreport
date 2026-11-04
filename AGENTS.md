@@ -109,8 +109,9 @@ fails on unknown fields), `ruff check .`, the PDF looked at (WeasyPrint) and the
 - **Paged.js cannot read CSS over `file://`** (the browser blocks its `fetch`): it lays out zero pages. Our HTML inlines
   the CSS; to try a template by hand, serve it over HTTP. Headless `chromium --print-to-pdf` prints *before* Paged.js
   finishes — drive Chromium over DevTools and wait for `.pagedjs_page` instead.
-- **`window.open` only counts inside the click**: in `app.js`, nothing may be `await`ed before `printReport`'s
-  `window.open('', '_blank')`, or the browser blocks the tab.
+- **No new tabs for printing**: Safari blocks a window opened after an `await` (the report check, the request), so the
+  browser PDF is laid out and printed in a hidden, off-screen iframe (`printReport`; `display:none` would leave Paged.js
+  nothing to measure). The save picker after the «Сохранить с «_»» click still counts as the user's gesture.
 - **WeasyPrint ≥ 70 stops a render with `FatalURLFetchingError`, a `BaseException`** — `except Exception` misses it;
   `output.html_to_pdf` converts it. Its `url_fetcher` is a `URLFetcher` object now, not a function.
 - **`build.py` drops `*.md` from modules**: license and notice files in a template or `vendor/` must not be Markdown.

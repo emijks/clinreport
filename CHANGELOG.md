@@ -22,12 +22,12 @@ All notable changes to ClinReport. Format: [Keep a Changelog](https://keepachang
 - Without WebKitGTK the Linux app says which package to install and runs OpenCRAVAT in the browser meanwhile.
 - **Reports in PDF and HTML, not only Word**: next to «Шаблон» the review page has «Формат»; each template offers the
   formats it can make. HTML is one file that opens in any browser (fonts and pictures inside). PDF is saved directly on
-  the server and in the Windows and Linux apps; in the macOS app the report opens in a browser tab with the print
-  dialog («Сохранить как PDF»). CLINBIO still receives Word.
+  the server and in the Windows and Linux apps; in the macOS app the browser's print dialog opens
+  («Сохранить как PDF»). CLINBIO still receives Word.
 - **«Профилактический ДНК-скрининг»** — a new report («Обработать как скрининг»): variants with Note 1 and 2, the
   participant's data, interpretation paragraphs (a draft from the OpenCRAVAT data), recommendations (the standard ones if
-  left empty) and extra literature cited as `[@key]` and numbered after the fixed list. Strict checks before any document
-  (zygosity, inheritance code, reads, nothing left as `_`). PDF, HTML and Word. Design and texts by the GenLab
+  left empty) and extra literature cited as `[@key]` and numbered after the fixed list. What is filled in is printed as
+  written; empty fields are listed before saving and printed as «_». PDF, HTML and Word. Design and texts by the GenLab
   Secondary-findings project.
 - Built-in templates are organised by format (`templates/docx/`, `templates/html/<id>/`); a guide for adding templates
   and report kinds (docs/development/templates.md, AGENTS.md).

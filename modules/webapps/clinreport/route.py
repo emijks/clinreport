@@ -53,6 +53,7 @@ HANDLERS = (
     ('GET', 'open', 'open_result'),
     ('POST', 'process', 'process'),
     ('POST', 'render', 'render'),
+    ('POST', 'report_check', 'report_check'),
     ('POST', 'upload', 'upload'),
     ('POST', 'similar', 'similar'),
     ('POST', 'send_clinbio', 'send_clinbio'),

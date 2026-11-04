@@ -100,6 +100,16 @@
     <div class="row end"><button type="button" class="btn" id="similar-close">Закрыть</button></div>
   </dialog>
 
+  <dialog id="missing-dialog">
+    <h2>Не всё заполнено</h2>
+    <p>Эти поля пустые — в документе на их месте будет «_»:</p>
+    <ul id="missing-list"></ul>
+    <div class="row end">
+      <button type="button" class="btn ghost" id="missing-cancel">Вернуться и заполнить</button>
+      <button type="button" class="btn primary" id="missing-continue">Сохранить с «_»</button>
+    </div>
+  </dialog>
+
   <dialog id="error-dialog">
     <h2>Ошибка</h2>
     <p id="error-message"></p>
