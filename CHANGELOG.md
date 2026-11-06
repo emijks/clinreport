@@ -5,6 +5,8 @@ All notable changes to ClinReport. Format: [Keep a Changelog](https://keepachang
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-11-06
+
 ### Added
 
 - **Linux desktop app** (Debian 13, Ubuntu 24.04+, Fedora 40+; x86-64): `ClinReport-<version>-linux-x64.tar.gz`, the
