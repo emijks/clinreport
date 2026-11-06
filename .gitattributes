@@ -3,6 +3,8 @@
 *.sh text eol=lf
 packaging/macos/ClinReport text eol=lf
 packaging/macos/Info.plist text eol=lf
+# Vendored files are pinned by sha256: byte for byte, never converted.
+modules/webapps/clinreport/vendor/** -text
 # Binary
 *.docx binary
 *.ico binary

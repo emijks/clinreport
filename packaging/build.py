@@ -455,8 +455,16 @@ def package_linux(app: Path, version: str, out: Path) -> Path:
     if not (app / 'clinreport').is_file():
         write_linux_start(app)  # a bundle built before the start script was part of the build
     with tarfile.open(archive, 'w:gz') as tar:
-        tar.add(app, arcname='ClinReport', filter=_no_pycache)
+        tar.add(app, arcname='ClinReport', filter=_linux_member)
     return archive
+
+
+def _linux_member(info: tarfile.TarInfo):
+    """_no_pycache, and the start script executable whatever the file system of the build said (Windows has no x bit)."""
+    info = _no_pycache(info)
+    if info is not None and info.name == 'ClinReport/clinreport':
+        info.mode |= 0o755
+    return info
 
 
 # cravat/constants.py creates these next to itself on import (Linux: oc_root = the package folder); not in the wheel.

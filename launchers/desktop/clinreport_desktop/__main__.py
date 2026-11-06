@@ -470,8 +470,14 @@ def selftest(app):
         while time.time() < deadline and app.server.state not in ('running', 'failed'):
             time.sleep(0.5)
         report['server'] = app.server.snapshot()
-        time.sleep(3)  # two status polls of the UI
-        report['ui_text'] = app.window.evaluate_js('document.body.innerText')
+        # The page can load well after the server (WebView2 on a CI runner: ~10 s); then give its status polls time.
+        app.ui_ready.wait(max(0.0, deadline - time.time()))
+        poll_until = min(deadline, time.time() + 20)
+        while True:
+            report['ui_text'] = app.window.evaluate_js('document.body.innerText')
+            if 'работает' in (report['ui_text'] or '').lower() or time.time() > poll_until:
+                break
+            time.sleep(1)
         report['ui_state'] = app.window.evaluate_js('window.__clinreportState || null')
         report['page_loaded'] = app.page_loaded.is_set()
         report['ui_ready'] = app.ui_ready.is_set()
