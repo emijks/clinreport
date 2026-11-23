@@ -156,7 +156,7 @@ class SampleProcessor:
         hgvsp_msg = f"p.({hgvsp[2:].replace('%3D', '=')})" if hgvsp else ''
         transcript = variant['vep_csq__transcript']
         refseq = variant['vep_csq__refseq']
-        transcript_msg = f'{refseq}:' if refseq else (f'{transcript}:' if transcript else '')
+        transcript_msg = f'{refseq}({transcript}):' if refseq else (f'{transcript}:' if transcript else '')
 
         zygosity = variant['tagsampler_new__zygosity']
         zygosity_msg = self.zygosity2msg.get(zygosity, {}).get(1, '-') if zygosity else '-'
