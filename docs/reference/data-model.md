@@ -42,7 +42,7 @@ Notes `1`/`2`/`3`/`7` also produce an interpretation paragraph.
 | vep_omim_pheno | `pheno`, `id`, `inher` |
 | tagsampler_new (per-sample, `;`-joined, aligned by index) | `samples`, `zygosity`, `ad` (per sample `ref,alt` → last value used), `dp`, `filter` |
 | clinvar_new | `sig`, `sig_subs` (`"Pathogenic (3); Likely_pathogenic (1)"`) |
-| gnomad4genomes / gnomad4exomes | `AN`, `AC` (summed; AF = ΣAC/ΣAN) |
+| gnomad4genomes / gnomad4exomes | `AN`, `AC` (summed; AF = ΣAC/ΣAN), optional `nhomalt` (sum of available counts) |
 | dbsnp | `rsid` |
 | gerp | `gerp_rs` |
 | in-silico | `dbscsnv__ada_score`, `metarnn__score`, `revel__score`, `alphamissense__score`, `phylop100__score` |
@@ -109,9 +109,9 @@ Variant row derivation (`_process_variant`):
 |---|---|
 | `gene` | `vep_csq__symbol` |
 | `disease` | `vep_omim_pheno__pheno`, overridden by the Russian sheet (see §6) |
-| `variation` | lines: `chrom-pos-ref-alt`, `<refseq or transcript>:`, `hgvsc`, `p.(<hgvsp>)`, `rsid` (empty lines dropped) |
+| `variation` | lines: `chrom-pos-ref-alt`, `refseq`, `(transcript)`, `hgvsc`, `p.(<hgvsp>)`, `rsid` (empty lines dropped) |
 | `zygosity` | `Гетерозигота`/`Гомозигота`/`-` + `\n(` inheritance in Russian `)` |
-| `frequency` | gnomAD4 aggregated AF → `float2percent` (2 significant digits for leading 1, else 1), or `н/д` |
+| `frequency` | gnomAD4 aggregated AF as a percentage, with one decimal place from 1% and two significant digits below 1%, or `н/д` |
 | `coverage` | `<alt reads>x/<depth>x` for this sample |
 | `pathogenicity` | notes 1–3: fixed text, capitalised; notes 7/8: ClinVar `sig` in Russian (`-` if none) |
 | `type`, `manual_criteria` | DB payload only (not shown in templates or page) |
@@ -161,7 +161,7 @@ Server-side post-processing in `service._report`: a sample number of literally `
 | `position`, `hgvs_c`, `hgvs_p` | `chrom:pos ref>alt`; `<refseq or transcript>:<hgvsc>`; `vep_csq__hgvsp` |
 | `classification` | Note 1 → `патогенный`, 2 → `вероятно патогенный` |
 | `zygosity` | `het`/`hom`/`hemi` → `гетерозигота`/`гомозигота`/`гемизигота` |
-| `frequency` | gnomAD4 aggregated AF: `0,0384`, `3,2×10⁻⁵`; 0 or none → `—` |
+| `frequency` | gnomAD4 aggregated AF as a percentage with the same rounding as the default report, e.g. `3,8%`, `0,0032%`. Zero or absent → `—`. |
 | `reads_alt`, `reads_total` | `tagsampler_new__ad`, `__dp` of this sample |
 | `interpretation` | the default report's narrative of the variant as one paragraph, without the phenotype sentence; `<i>gene</i>` |
 | `recommendations` | empty → the template's `study.json` `default_recommendations` |

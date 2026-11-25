@@ -5,6 +5,12 @@ All notable changes to ClinReport. Format: [Keep a Changelog](https://keepachang
 
 ## [Unreleased]
 
+### Changed
+
+- Show the RefSeq accession followed by the transcript in parentheses, on separate lines in the `variation` table cell and separated by a space in variant interpretation.
+- Format gnomAD frequencies with one decimal place from 1% and two significant digits below 1% in diagnostic and DNA screening reports.
+- Include the total reported gnomAD homozygote count from genomes and exomes in variant interpretation when available.
+
 ## [3.1.0] - 2026-11-06
 
 ### Added
