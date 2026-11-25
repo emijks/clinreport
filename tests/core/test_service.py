@@ -4,6 +4,8 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from clinreport_core import output, screening, templates
+from clinreport_core.process import SampleProcessor
 from docx import Document
 
 
@@ -14,6 +16,69 @@ def docx_text(data: bytes) -> str:
         for row in table.rows:
             parts.extend(cell.text for cell in row.cells)
     return '\n'.join(parts)
+
+
+@pytest.fixture
+def report_variant():
+    variant = dict.fromkeys((
+        'dbsnp__rsid', 'vep_csq__hgvsg', 'vep_csq__consequence', 'vep_csq__exon', 'vep_csq__intron',
+        'vep_omim_pheno__pheno', 'vep_omim_pheno__inher', 'vep_omim_pheno__id', 'gnomad4genomes__AN',
+        'gnomad4exomes__AN', 'gerp__gerp_rs', 'dbscsnv__ada_score', 'metarnn__score', 'revel__score',
+        'alphamissense__score', 'phylop100__score', 'clinvar_new__sig', 'clinvar_new__sig_subs',
+    ))
+    variant.update(
+        base__note='1', base__chrom='chr1', extra_vcf_info__pos=123, extra_vcf_info__ref='A',
+        extra_vcf_info__alt='G', vep_csq__symbol='GENE', vep_csq__transcript='ENST000001.2',
+        vep_csq__refseq='NM_000001.3', vep_csq__hgvsc='c.13A>G', vep_csq__hgvsp='p.Ser5Gly',
+        tagsampler_new__samples='sample', tagsampler_new__filter='PASS',
+        tagsampler_new__zygosity='het', tagsampler_new__ad='5,6', tagsampler_new__dp='11',
+    )
+    return variant
+
+
+@pytest.mark.parametrize(('transcript', 'refseq', 'table_label', 'narrative_label'), [
+    ('ENST000001.2', 'NM_000001.3', 'NM_000001.3\n(ENST000001.2)', 'NM_000001.3 (ENST000001.2)'),
+    ('ENST000001.2', None, 'ENST000001.2', 'ENST000001.2'),
+    (None, 'NM_000001.3', 'NM_000001.3', 'NM_000001.3'),
+    ('NM_000001.3', 'NM_000001.3', 'NM_000001.3', 'NM_000001.3'),
+])
+def test_transcripts_in_report_table_and_interpretation(report_variant, transcript, refseq, table_label, narrative_label):
+    report_variant.update(vep_csq__transcript=transcript, vep_csq__refseq=refseq)
+    context = SampleProcessor([report_variant], 'sample').build_default_context()
+    variation = f'chr1-123-A-G\n{table_label}:\nc.13A>G\np.(Ser5Gly)'
+    narrative = f'{narrative_label}:c.13A>G'
+    assert context['p_variants'][0]['variation'] == variation
+    assert narrative in context['interpretation'][0]['intro_pre']
+
+    document = output.docx_document(templates.richtextify(context), templates.DOCX_DIR / 'DZM.docx')
+    text = docx_text(document)
+    assert variation in text
+    assert narrative in text
+
+
+@pytest.mark.parametrize(('chrom', 'hom_fields', 'suffix'), [
+    ('chr1', {'gnomad4exomes__nhomalt': 2, 'gnomad4genomes__nhomalt': 3}, ', в том числе 5 гомозигот'),
+    ('chrX', {'gnomad4exomes__nhomalt': 2, 'gnomad4genomes__nhomalt': 3}, ', в том числе 5 гомозигот'),
+    ('chrX', {'gnomad4exomes__nhomalt': 0, 'gnomad4genomes__nhomalt': None}, ', гомозиготы не зарегистрированы'),
+    ('chr1', {'gnomad4exomes__nhomalt': None, 'gnomad4genomes__nhomalt': None}, ''),
+    ('chr1', {}, ''),
+])
+def test_gnomad_frequency_and_homozygotes(report_variant, chrom, hom_fields, suffix):
+    report_variant.update(
+        base__chrom=chrom, gnomad4exomes__AC=41, gnomad4exomes__AN=700,
+        gnomad4genomes__AC=16, gnomad4genomes__AN=297, **hom_fields,
+    )
+    processor = SampleProcessor([report_variant], 'sample')
+    expected = (
+        'Вариант встречается в базе данных популяционных частот gnomAD v4.1.0 '
+        f'с частотой 5,7% (57 аллел(ей){suffix}).'
+    )
+    context = processor.build_default_context()
+    assert context['p_variants'][0]['frequency'] == '5,7%'
+    assert expected in context['interpretation'][0]['body']
+    screening_context = screening.build_context(processor)
+    assert screening_context['variants'][0]['frequency'] == '5,7%'
+    assert expected in screening_context['interpretation'][0]
 
 
 def test_open_lists_samples(service, trio_db, single_db):

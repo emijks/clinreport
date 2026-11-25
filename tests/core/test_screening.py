@@ -69,7 +69,7 @@ def test_inheritance_is_one_code_or_left_to_the_clinician(value, code):
 
 
 @pytest.mark.parametrize(('value', 'text'), [
-    (0.0384, '0,0384'), (3.2e-05, '3,2×10⁻⁵'), (None, '—'), (0, '0'), ('н/д', 'н/д')])
+    (0.0384, '3,8%'), (3.2e-05, '0,0032%'), (None, '—'), (0, '0%'), ('н/д', 'н/д')])
 def test_frequency_format(value, text):
     assert screening.fmt_freq(value) == text
 

@@ -94,7 +94,11 @@ class SampleProcessor:
         return variants_data
 
     def get_gnomad4aggregated(self, variant_data: dict) -> dict:
-        agg = {'AN': None, 'AC': None, 'AF': None}
+        hom_counts = [
+            count for source in ('genomes', 'exomes')
+            if (count := variant_data.get(f'gnomad4{source}__nhomalt')) is not None
+        ]
+        agg = {'AN': None, 'AC': None, 'AF': None, 'nhomalt': sum(hom_counts) if hom_counts else None}
         agg['AN'] = sum(v for v in [variant_data['gnomad4genomes__AN'], variant_data['gnomad4exomes__AN']] if v)
         if agg['AN']:
             agg['AC'] = sum(v for v in [variant_data['gnomad4genomes__AC'], variant_data['gnomad4exomes__AC']] if v)
@@ -134,6 +138,14 @@ class SampleProcessor:
         return ', '.join(items[:-1]) + ' и ' + items[-1]
 
     @staticmethod
+    def _transcript_label(variant: dict, separator: str) -> str:
+        transcript = variant['vep_csq__transcript']
+        refseq = variant['vep_csq__refseq']
+        if transcript and refseq and transcript != refseq:
+            return f'{refseq}{separator}({transcript})'
+        return refseq or transcript or ''
+
+    @staticmethod
     def _variation_str(spdi: str, transcript_msg: str, hgvsc: str, hgvsp_msg: str, rsid: str) -> str:
         return '\n'.join(p for p in (spdi, transcript_msg, hgvsc, hgvsp_msg, rsid) if p)
 
@@ -154,9 +166,8 @@ class SampleProcessor:
         hgvsc = variant['vep_csq__hgvsc'] or ''
         hgvsp = variant['vep_csq__hgvsp']
         hgvsp_msg = f"p.({hgvsp[2:].replace('%3D', '=')})" if hgvsp else ''
-        transcript = variant['vep_csq__transcript']
-        refseq = variant['vep_csq__refseq']
-        transcript_msg = f'{refseq}({transcript}):' if refseq else (f'{transcript}:' if transcript else '')
+        transcript = self._transcript_label(variant, '\n')
+        transcript_msg = f'{transcript}:' if transcript else ''
 
         zygosity = variant['tagsampler_new__zygosity']
         zygosity_msg = self.zygosity2msg.get(zygosity, {}).get(1, '-') if zygosity else '-'
@@ -228,11 +239,10 @@ class SampleProcessor:
 
     def _variant_narrative(self, variant: dict) -> dict:
         symbol = variant['vep_csq__symbol']
-        transcript = variant['vep_csq__transcript']
-        refseq = variant['vep_csq__refseq']
+        transcript = self._transcript_label(variant, ' ')
         hgvsg = variant['vep_csq__hgvsg']
         hgvsc = variant['vep_csq__hgvsc']
-        hgvsc_msg = f'{refseq}:{hgvsc}' if refseq else f'{transcript}:{hgvsc}'
+        hgvsc_msg = f'{transcript}:{hgvsc}'
         hgvsp = variant['vep_csq__hgvsp']
         hgvsp_msg = f"p.({hgvsp[2:].replace('%3D', '=')})" if hgvsp else ''
         rsid = variant['dbsnp__rsid']
@@ -271,6 +281,11 @@ class SampleProcessor:
         agg = self.get_gnomad4aggregated(variant)
         af_msg = float2percent(agg['AF']) if agg['AF'] else ''
         ac_msg = f"{agg['AC']} аллел(ей)" if agg['AC'] else ''
+        hom_count = agg['nhomalt']
+        if ac_msg and hom_count == 0:
+            ac_msg += ', гомозиготы не зарегистрированы'
+        elif ac_msg and hom_count is not None:
+            ac_msg += f', в том числе {hom_count} гомозигот'
         zygosity = variant['tagsampler_new__zygosity']
         zygosity_msg = self.zygosity2msg.get(zygosity, {}).get(2, '') if zygosity else ''
         dp = variant['tagsampler_new__dp'] or '_'

@@ -1,4 +1,4 @@
-from math import floor, log10
+from decimal import Decimal
 
 
 def predict_insilico(scsnvada, metarnn, revel, alphamissense, phylop):
@@ -23,15 +23,11 @@ def predict_insilico(scsnvada, metarnn, revel, alphamissense, phylop):
 
 
 def float2percent(f: float) -> str:
-    p = 100 * f
+    p = Decimal(str(f)).scaleb(2)
     if p <= 0:
         return '0%'
-    exp = floor(log10(p))
-    if p < 10 ** exp:
-        exp -= 1
-    elif p >= 10 ** (exp + 1):
-        exp += 1
-    lead = int(p / 10 ** exp)
-    sig = 2 if lead == 1 else 1
-    ndigits = sig - 1 - exp
-    return f'{round(p, ndigits)}%'
+    if p < 1:
+        # Scientific notation rounds to two significant digits across powers of ten.
+        p = Decimal(f'{p:.1E}')
+        return f'{p:f}%'.replace('.', ',')
+    return f'{p:.1f}%'.replace('.', ',')

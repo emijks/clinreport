@@ -35,6 +35,12 @@ All notable changes to ClinReport. Format: [Keep a Changelog](https://keepachang
 - Built-in templates are organised by format (`templates/docx/`, `templates/html/<id>/`); a guide for adding templates
   and report kinds (docs/development/templates.md, AGENTS.md).
 
+### Changed
+
+- Show the RefSeq accession followed by the transcript in parentheses, on separate lines in the `variation` table cell and separated by a space in variant interpretation.
+- Format gnomAD frequencies with one decimal place from 1% and two significant digits below 1% in diagnostic and DNA screening reports.
+- Include the total reported gnomAD homozygote count from genomes and exomes in variant interpretation when available.
+
 ### Fixed
 
 - `--headless` stopped by `--quit` could exit before OpenCRAVAT's worker processes were gone (the next start or `--quit`

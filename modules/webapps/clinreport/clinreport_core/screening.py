@@ -1,6 +1,6 @@
 """«Профилактический ДНК-скрининг» — the report kind 'screening'.
 
-Ported from KateAnpilogova/Secondary-findings (render.py, commit 058240c): the checks, the frequency format and the
+Ported from KateAnpilogova/Secondary-findings (render.py, commit 058240c): the checks and the
 citation numbering are the same; the context comes from the OpenCRAVAT result instead of a hand-written JSON.
 
 The context (POST process → the review page edits it → render) holds strings only, so every value is editable:
@@ -26,6 +26,8 @@ import json
 import re
 from datetime import date
 from pathlib import Path
+
+from .utils import float2percent
 
 NOTES = {'1': 'патогенный', '2': 'вероятно патогенный'}
 INHERITANCE = {
@@ -134,18 +136,12 @@ def _paragraph(processor, variant: dict) -> str:
 
 
 def fmt_freq(value) -> str:
-    """0.0384 → «0,0384»; 3.2e-05 → «3,2×10⁻⁵»; None → «—»; a string stays as it is (the page edits strings)."""
+    """Format an allele fraction as a percentage and preserve edited strings."""
     if value is None or value == '':
         return '—'
     if isinstance(value, str):
         return value
-    if value == 0:
-        return '0'
-    if value >= 1e-4:
-        return f'{value:.4g}'.replace('.', ',')
-    mantissa, exponent = f'{value:.1e}'.split('e')
-    superscript = str.maketrans('-0123456789', '⁻⁰¹²³⁴⁵⁶⁷⁸⁹')
-    return f"{mantissa.replace('.', ',')}×10{str(int(exponent)).translate(superscript)}"
+    return float2percent(value)
 
 
 # --- what is still empty (the page warns; the document prints «_») ---
@@ -306,7 +302,7 @@ EXAMPLE = {
     'variants': [{
         'gene': 'HFE', 'disease': 'Гемохроматоз, тип 1', 'omim': '235200', 'position': 'chr6:26092913 G>A',
         'hgvs_c': 'NM_000410.4:c.845G>A', 'hgvs_p': 'p.Cys282Tyr', 'classification': 'патогенный',
-        'zygosity': 'гомозигота', 'inheritance': 'АР', 'frequency': '0,0384', 'reads_alt': '38', 'reads_total': '38',
+        'zygosity': 'гомозигота', 'inheritance': 'АР', 'frequency': '3,8%', 'reads_alt': '38', 'reads_total': '38',
     }],
     'interpretation': ['В гене <i>HFE</i> выявлен вариант c.845G>A (p.Cys282Tyr) в гомозиготном состоянии [@feder1997].'],
     'recommendations': [],
